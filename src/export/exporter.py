@@ -1,8 +1,9 @@
-"""Модуль экспорта моделей в Joblib и ONNX с автовалидацией через ONNX Runtime."""
+"""Модуль экспорта пайплайнов в Joblib и ONNX с автовалидацией через ONNX Runtime."""
 
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -12,24 +13,13 @@ import onnxruntime as ort
 import pandas as pd
 import skl2onnx
 
-from src.models.registry import ClassifierProtocol
+from src.pipeline.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
 
-def export_joblib(model: Union[ClassifierProtocol, Any], filepath: Union[str, Path]) -> Path:
-    """
-    Экспортирует модель или пайплайн в формат Joblib.
-    """
-    path = Path(filepath)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, path)
-    logger.info("Модель сохранена в Joblib: %s", path)
-    return path
-
-
 def _to_numpy_float32(data: Union[np.ndarray, pd.DataFrame]) -> np.ndarray:
-    """Приводит входные данные к 2D np.ndarray со float32."""
+    """Приводит данные к 2D np.ndarray float32."""
     if isinstance(data, pd.DataFrame):
         return data.to_numpy(dtype=np.float32)
     arr = np.asarray(data, dtype=np.float32)
@@ -39,27 +29,35 @@ def _to_numpy_float32(data: Union[np.ndarray, pd.DataFrame]) -> np.ndarray:
 
 
 def export_onnx(
-    model: Union[ClassifierProtocol, Any],
+    pipeline: Pipeline,
     filepath: Union[str, Path],
     sample_input: Union[np.ndarray, pd.DataFrame],
     target_opset: Optional[int] = None,
 ) -> Path:
     """
-    Конвертирует модель в формат ONNX.
-    Поддерживает: CatBoost, LightGBM, XGBoost, Scikit-learn модели и пайплайны.
+    Конвертирует модель из Pipeline в формат ONNX с использованием трансформированного образца данных.
+    Поддерживает: CatBoost, LightGBM, XGBoost, Scikit-learn модели.
     """
+    if not isinstance(pipeline, Pipeline):
+        raise TypeError(f"Экспорт ONNX поддерживает только Pipeline, получен {type(pipeline).__name__}")
+
+    if not hasattr(pipeline, "model_") or not hasattr(pipeline, "preprocessor_"):
+        raise RuntimeError("Пайплайн должен быть обучен (fit) перед экспортом в ONNX.")
+
     path = Path(filepath)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    X_sample = _to_numpy_float32(sample_input)
+    # Трансформируем тестовый образец через препроцессор пайплайна
+    X_sample = np.asarray(pipeline.transform(sample_input), dtype=np.float32)
     n_features = X_sample.shape[1]
-    model_type_name = type(model).__name__.lower()
+    inner_model = pipeline.model_
+    model_type_name = type(inner_model).__name__.lower()
 
-    logger.info("Конвертация модели '%s' в ONNX (n_features=%d, opset=%s)", model_type_name, n_features, target_opset)
+    logger.info("Конвертация модели '%s' из пайплайна в ONNX (n_features=%d, opset=%s)", model_type_name, n_features, target_opset)
 
     if "catboost" in model_type_name:
-        if hasattr(model, "save_model"):
-            model.save_model(str(path), format="onnx")
+        if hasattr(inner_model, "save_model"):
+            inner_model.save_model(str(path), format="onnx")
             logger.info("CatBoost модель экспортирована в ONNX: %s", path)
             return path
 
@@ -71,7 +69,7 @@ def export_onnx(
         kwargs: Dict[str, Any] = {"initial_types": initial_types, "zipmap": False}
         if target_opset is not None:
             kwargs["target_opset"] = target_opset
-        onnx_model = onnxmltools.convert_lightgbm(model, **kwargs)
+        onnx_model = onnxmltools.convert_lightgbm(inner_model, **kwargs)
         path.write_bytes(onnx_model.SerializeToString())
         logger.info("LightGBM модель экспортирована в ONNX: %s", path)
         return path
@@ -84,7 +82,7 @@ def export_onnx(
         kwargs = {"initial_types": initial_types}
         if target_opset is not None:
             kwargs["target_opset"] = target_opset
-        onnx_model = onnxmltools.convert_xgboost(model, **kwargs)
+        onnx_model = onnxmltools.convert_xgboost(inner_model, **kwargs)
         path.write_bytes(onnx_model.SerializeToString())
         logger.info("XGBoost модель экспортирована в ONNX: %s", path)
         return path
@@ -93,7 +91,7 @@ def export_onnx(
     if target_opset is not None:
         skl2onnx_kwargs["target_opset"] = target_opset
     onnx_model = skl2onnx.to_onnx(
-        model,
+        inner_model,
         X_sample[:1],
         **skl2onnx_kwargs,
     )
@@ -104,41 +102,38 @@ def export_onnx(
 
 def validate_onnx(
     onnx_path: Union[str, Path],
-    model: Union[ClassifierProtocol, Any],
+    pipeline: Pipeline,
     test_batch: Union[np.ndarray, pd.DataFrame],
     atol: float = 1e-5,
 ) -> bool:
     """
     Проверяет валидность экспортированной ONNX-модели.
-    Сравнивает выходы Python-модели и ONNX Runtime: np.testing.assert_allclose(py_probs, onnx_probs, atol=1e-5).
+    Сравнивает выходы Python пайплайна и ONNX Runtime: np.testing.assert_allclose(py_probs, onnx_probs, atol=1e-5).
     """
+    if not isinstance(pipeline, Pipeline):
+        raise TypeError(f"Валидация ONNX ожидает Pipeline, получен {type(pipeline).__name__}")
+
     path = Path(onnx_path)
     if not path.exists():
         raise FileNotFoundError(f"ONNX файл для валидации не найден: {path}")
 
-    X_test = _to_numpy_float32(test_batch)
+    # Трансформируем тестовый батч для ONNX инференса
+    X_onnx_input = np.asarray(pipeline.transform(test_batch), dtype=np.float32)
 
-    # Получаем предсказания из Python
-    if not hasattr(model, "predict_proba"):
-        raise AttributeError(f"Модель {type(model).__name__} не имеет метода predict_proba для валидации.")
+    # Предсказания через Python-пайплайн
+    py_probs = np.asarray(pipeline.predict_proba(test_batch), dtype=np.float32)
 
-    py_probs = np.asarray(model.predict_proba(X_test), dtype=np.float32)
-
-    # Запускаем сессию ONNX Runtime
+    # Инференс в ONNX Runtime
     session = ort.InferenceSession(str(path))
     input_name = session.get_inputs()[0].name
-    outputs = session.run(None, {input_name: X_test})
+    outputs = session.run(None, {input_name: X_onnx_input})
 
-    # Парсим вероятности из выходов ONNX
     onnx_probs: Optional[np.ndarray] = None
-
     if len(outputs) == 1:
         onnx_probs = np.asarray(outputs[0], dtype=np.float32)
     elif len(outputs) >= 2:
         second_out = outputs[1]
-        # Проверяем, не zipmap ли (список словарей)
         if isinstance(second_out, list) and len(second_out) > 0 and isinstance(second_out[0], dict):
-            # Конвертируем список словарей {0: p0, 1: p1} в 2D numpy массив
             classes = sorted(list(second_out[0].keys()))
             onnx_probs = np.array(
                 [[row_dict[c] for c in classes] for row_dict in second_out],
@@ -150,11 +145,9 @@ def validate_onnx(
     if onnx_probs is None:
         raise RuntimeError("Не удалось извлечь массив вероятностей из выходов ONNX Runtime.")
 
-    # Если форма 1D при бинарной классификации (например, для одного класса)
     if onnx_probs.ndim == 1 and py_probs.ndim == 2 and py_probs.shape[1] == 2:
         onnx_probs = np.column_stack([1.0 - onnx_probs, onnx_probs])
 
-    # Сравнение через assert_allclose
     max_diff = float(np.max(np.abs(py_probs - onnx_probs)))
     try:
         np.testing.assert_allclose(py_probs, onnx_probs, atol=atol)
@@ -164,7 +157,7 @@ def validate_onnx(
 
     logger.info(
         "[OK] Валидация ONNX Runtime пройдена (батч=%d, max_diff=%.2e, atol=%.1e)",
-        len(X_test),
+        len(test_batch),
         max_diff,
         atol,
     )
@@ -172,23 +165,26 @@ def validate_onnx(
 
 
 def export_and_validate(
-    model: Union[ClassifierProtocol, Any],
+    pipeline: Pipeline,
     test_batch: Union[np.ndarray, pd.DataFrame],
     onnx_path: Optional[Union[str, Path]] = None,
     joblib_path: Optional[Union[str, Path]] = None,
     atol: float = 1e-5,
 ) -> Dict[str, Path]:
     """
-    Экспортирует модель в Joblib и/или ONNX с обязательной валидацией через ONNX Runtime.
+    Экспортирует пайплайн в Joblib и/или ONNX с обязательной валидацией через ONNX Runtime.
     """
+    if not isinstance(pipeline, Pipeline):
+        raise TypeError(f"export_and_validate ожидает Pipeline, получен {type(pipeline).__name__}")
+
     artifacts: Dict[str, Path] = {}
 
     if joblib_path is not None:
-        artifacts["joblib"] = export_joblib(model, joblib_path)
+        artifacts["joblib"] = export_joblib(pipeline, joblib_path)
 
     if onnx_path is not None:
-        out_onnx = export_onnx(model, onnx_path, sample_input=test_batch)
-        validate_onnx(out_onnx, model, test_batch, atol=atol)
+        out_onnx = export_onnx(pipeline, onnx_path, sample_input=test_batch)
+        validate_onnx(out_onnx, pipeline, test_batch, atol=atol)
         artifacts["onnx"] = out_onnx
 
     return artifacts
@@ -201,11 +197,8 @@ def verify_onnx_file(
     atol: float = 1e-5,
 ) -> Dict[str, Any]:
     """
-    Автономная проверка работоспособности уже экспортированного ONNX-файла.
-    Проверяет структуру графа, типы входов/выходов, время инференса
-    и (при наличии связанной Joblib-модели) совпадение вероятностей.
+    Автономная проверка работоспособности ONNX-файла и сверка с сохраненным Pipeline в Joblib.
     """
-    import time
     import onnx
 
     path = Path(onnx_path)
@@ -228,39 +221,6 @@ def verify_onnx_file(
     ]
 
     primary_input = session.get_inputs()[0]
-    expected_dim = primary_input.shape[1] if len(primary_input.shape) > 1 and isinstance(primary_input.shape[1], int) else None
-
-    X_test: np.ndarray
-    if dataset_path is not None and Path(dataset_path).exists():
-        from src.dataset.loader import load_dataset
-        from src.tuning.tuner import prepare_features
-
-        df_X, _, _ = load_dataset(dataset_path)
-        X_proc, _ = prepare_features(df_X)
-        X_test = X_proc[:10]
-    else:
-        candidate_paths = [
-            Path("data/processed/dataset.parquet"),
-            Path("data/processed/dataset.csv"),
-        ]
-        found = False
-        for cand in candidate_paths:
-            if cand.exists():
-                from src.dataset.loader import load_dataset
-                from src.tuning.tuner import prepare_features
-
-                df_X, _, _ = load_dataset(cand)
-                X_proc, _ = prepare_features(df_X)
-                X_test = X_proc[:10]
-                found = True
-                break
-        if not found:
-            dim = expected_dim if expected_dim is not None else 10
-            X_test = np.random.randn(5, dim).astype(np.float32)
-
-    t0 = time.perf_counter()
-    outputs = session.run(None, {primary_input.name: X_test})
-    latency_ms = (time.perf_counter() - t0) * 1000.0
 
     matched_joblib: Optional[Path] = None
     if joblib_path is not None:
@@ -272,37 +232,74 @@ def verify_onnx_file(
         if candidate_joblib.exists():
             matched_joblib = candidate_joblib
 
+    loaded_pipe: Optional[Pipeline] = None
+    if matched_joblib is not None:
+        try:
+            loaded_pipe = Pipeline.load(matched_joblib)
+        except Exception as e:
+            logger.warning("Не удалось загрузить Pipeline из %s: %s", matched_joblib, e)
+
+    # Загружаем тестовые данные
+    df_raw: Optional[pd.DataFrame] = None
+    if dataset_path is not None and Path(dataset_path).exists():
+        from src.dataset.loader import load_dataset
+        df_raw, _, _ = load_dataset(dataset_path)
+    else:
+        for cand in [Path("data/processed/dataset.parquet"), Path("data/processed/dataset.csv")]:
+            if cand.exists():
+                from src.dataset.loader import load_dataset
+                df_raw, _, _ = load_dataset(cand)
+                break
+
+    batch_raw: Optional[pd.DataFrame] = None
+    if df_raw is not None and loaded_pipe is not None:
+        pipe_features = getattr(loaded_pipe, "feature_names_in_", None)
+        if pipe_features is not None and all(f in df_raw.columns for f in pipe_features):
+            batch_raw = df_raw[pipe_features].iloc[:10]
+            X_test_onnx = np.asarray(loaded_pipe.transform(batch_raw), dtype=np.float32)
+            batch_size = len(batch_raw)
+        else:
+            expected_dim = primary_input.shape[1] if len(primary_input.shape) > 1 and isinstance(primary_input.shape[1], int) else 10
+            X_test_onnx = np.random.randn(5, expected_dim).astype(np.float32)
+            batch_size = len(X_test_onnx)
+    else:
+        expected_dim = primary_input.shape[1] if len(primary_input.shape) > 1 and isinstance(primary_input.shape[1], int) else 10
+        X_test_onnx = np.random.randn(5, expected_dim).astype(np.float32)
+        batch_size = len(X_test_onnx)
+
+    t0 = time.perf_counter()
+    outputs = session.run(None, {primary_input.name: X_test_onnx})
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+
     diff: Optional[float] = None
     is_equivalent: Optional[bool] = None
 
-    if matched_joblib is not None:
-        model_py = joblib.load(matched_joblib)
-        if hasattr(model_py, "predict_proba"):
-            py_probs = np.asarray(model_py.predict_proba(X_test), dtype=np.float32)
+    if loaded_pipe is not None and batch_raw is not None:
+        py_probs = np.asarray(loaded_pipe.predict_proba(batch_raw), dtype=np.float32)
 
-            onnx_probs: Optional[np.ndarray] = None
-            if len(outputs) == 1:
-                onnx_probs = np.asarray(outputs[0], dtype=np.float32)
-            elif len(outputs) >= 2:
-                sec = outputs[1]
-                if isinstance(sec, list) and len(sec) > 0 and isinstance(sec[0], dict):
-                    classes = sorted(list(sec[0].keys()))
-                    onnx_probs = np.array([[d[c] for c in classes] for d in sec], dtype=np.float32)
-                else:
-                    onnx_probs = np.asarray(sec, dtype=np.float32)
+        onnx_probs: Optional[np.ndarray] = None
+        if len(outputs) == 1:
+            onnx_probs = np.asarray(outputs[0], dtype=np.float32)
+        elif len(outputs) >= 2:
+            sec = outputs[1]
+            if isinstance(sec, list) and len(sec) > 0 and isinstance(sec[0], dict):
+                classes = sorted(list(sec[0].keys()))
+                onnx_probs = np.array([[d[c] for c in classes] for d in sec], dtype=np.float32)
+            else:
+                onnx_probs = np.asarray(sec, dtype=np.float32)
 
-            if onnx_probs is not None:
-                if onnx_probs.ndim == 1 and py_probs.ndim == 2 and py_probs.shape[1] == 2:
-                    onnx_probs = np.column_stack([1.0 - onnx_probs, onnx_probs])
-                diff = float(np.max(np.abs(py_probs - onnx_probs)))
-                is_equivalent = bool(diff <= atol)
+        if onnx_probs is not None:
+            if onnx_probs.ndim == 1 and py_probs.ndim == 2 and py_probs.shape[1] == 2:
+                onnx_probs = np.column_stack([1.0 - onnx_probs, onnx_probs])
+            diff = float(np.max(np.abs(py_probs - onnx_probs)))
+            is_equivalent = bool(diff <= atol)
 
     return {
         "path": str(path),
         "file_size_kb": file_size_kb,
         "inputs": inputs_info,
         "outputs": outputs_info,
-        "batch_size": len(X_test),
+        "batch_size": batch_size,
         "latency_ms": latency_ms,
         "matched_joblib": str(matched_joblib) if matched_joblib else None,
         "max_diff": diff,

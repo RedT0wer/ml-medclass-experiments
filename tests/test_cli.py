@@ -1,4 +1,4 @@
-"""Smoke-тесты для интерфейса командной строки cli.py."""
+"""Smoke-тесты для интерфейса командной строки cli.py на базе Pipeline."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def temp_dataset_csv() -> str:
         "cat_feature": ["A", "B", "A", "B", "A", "B", "A", "B", "A", "B"] * 3,
         "diagnosis": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1] * 3,
     })
-    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w")
+    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w", encoding="utf-8")
     df.to_csv(tmp.name, sep=";", index=False)
     tmp.close()
     return tmp.name
@@ -31,6 +31,7 @@ def test_cli_list(capsys: pytest.CaptureFixture) -> None:
     assert "catboost" in captured
     assert "roc_auc" in captured
     assert "Зарегистрированные модели" in captured
+    assert "Зарегистрированные препроцессоры" in captured
 
 
 def test_cli_prep_data() -> None:
@@ -62,7 +63,9 @@ def test_cli_tune(temp_dataset_csv: str) -> None:
         main(argv)
 
         best_params_path = Path(tmpdir) / "best_params_logreg.json"
+        pipeline_path = Path(tmpdir) / "best_params_logreg.joblib"
         assert best_params_path.exists()
+        assert pipeline_path.exists()
 
 
 def test_cli_benchmark(temp_dataset_csv: str) -> None:
@@ -87,8 +90,8 @@ def test_cli_benchmark(temp_dataset_csv: str) -> None:
 
 def test_cli_train_and_verify(temp_dataset_csv: str) -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
-        onnx_path = Path(tmpdir) / "model.onnx"
-        joblib_path = Path(tmpdir) / "model.joblib"
+        onnx_path = Path(tmpdir) / "pipeline.onnx"
+        joblib_path = Path(tmpdir) / "pipeline.joblib"
         argv = [
             "train",
             "--model", "logreg",

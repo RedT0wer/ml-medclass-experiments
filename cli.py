@@ -1,4 +1,4 @@
-"""Интерфейс командной строки для экспериментов по классификации медицинских данных."""
+"""Интерфейс командной строки для экспериментов классификации на базе Pipeline."""
 
 from __future__ import annotations
 
@@ -11,19 +11,21 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import train_test_split
 from tabulate import tabulate
 
 from src.dataset.dataset_builder import DatasetBuilder
 from src.dataset.loader import load_dataset
 from src.export.exporter import export_and_validate, verify_onnx_file
-from src.metrics.registry import calculate_metrics, list_metrics
-from src.models.registry import (
-    MODELS_REGISTRY,
-    get_model,
-    list_models,
+from src.metrics.registry import list_metrics
+from src.models.registry import MODELS_REGISTRY, list_models
+from src.pipeline.pipeline import create_pipeline
+from src.preprocessors.registry import (
+    PREPROCESSORS_REGISTRY,
+    get_default_preprocessor_for_model,
+    list_preprocessors,
 )
-from src.tuning.tuner import HyperparameterTuner, prepare_features
+from src.tuning.tuner import HyperparameterTuner
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,10 +58,10 @@ CHEATSHEET = """
 Примеры использования:
   python cli.py list
   python cli.py prep-data --output data/processed/dataset.parquet
-  python cli.py train --model catboost --export-onnx results/catboost.onnx
+  python cli.py train --model catboost --export-onnx results/catboost.onnx --export-joblib results/catboost.joblib
   python cli.py benchmark --models catboost xgboost logreg --cv 5
   python cli.py tune --model catboost --cv 5
-  python cli.py verify-onnx --onnx results/catboost.onnx
+  python cli.py verify-onnx --onnx results/catboost.onnx --joblib results/catboost.joblib
 """
 
 
@@ -67,7 +69,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     default_dataset = _get_default_dataset_path()
 
     parser = argparse.ArgumentParser(
-        description="Классификация клинических медицинских данных.",
+        description="Классификация клинических медицинских данных на базе Pipeline.",
         epilog=CHEATSHEET,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -76,7 +78,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     # 1. list
     subparsers.add_parser(
         "list",
-        help="Список доступных моделей и метрик",
+        help="Список доступных моделей, препроцессоров и метрик",
     )
 
     # 2. prep-data
@@ -118,7 +120,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     # 3. train
     train_parser = subparsers.add_parser(
         "train",
-        help="Обучение модели с экспортом в ONNX/Joblib и валидацией через ONNX Runtime",
+        help="Обучение Pipeline с экспортом в ONNX и Joblib",
     )
     train_parser.add_argument(
         "--model",
@@ -126,6 +128,13 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         default="catboost",
         choices=list_models(),
         help="Имя модели",
+    )
+    train_parser.add_argument(
+        "--preprocessor",
+        type=str,
+        default=None,
+        choices=list_preprocessors(),
+        help="Имя препроцессора (по умолчанию из configs/preprocessors.yaml)",
     )
     train_parser.add_argument(
         "--dataset",
@@ -143,7 +152,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         "--export-joblib",
         type=str,
         default=None,
-        help="Путь для экспорта в Joblib (по умолчанию: results/<model>.joblib)",
+        help="Путь для экспорта всего Pipeline в Joblib (по умолчанию: results/<model>.joblib)",
     )
     train_parser.add_argument(
         "--params-file",
@@ -167,7 +176,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     # 4. benchmark
     bench_parser = subparsers.add_parser(
         "benchmark",
-        help="Кросс-валидация моделей и построение сводного отчета",
+        help="Кросс-валидация пайплайнов моделей и построение сводного отчета",
     )
     bench_parser.add_argument(
         "--dataset",
@@ -181,6 +190,12 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=list_models(),
         help="Список моделей для сравнения",
+    )
+    bench_parser.add_argument(
+        "--preprocessor",
+        type=str,
+        default=None,
+        help="Принудительный препроцессор для всех моделей (по умолчанию свой для каждой)",
     )
     bench_parser.add_argument(
         "--metrics",
@@ -211,7 +226,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     # 5. tune
     tune_parser = subparsers.add_parser(
         "tune",
-        help="Подбор гиперпараметров по сетке с сохранением в results/",
+        help="Подбор гиперпараметров пайплайна с сохранением параметров и модели",
     )
     tune_parser.add_argument(
         "--model",
@@ -219,6 +234,12 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         default="catboost",
         choices=list_models(),
         help="Имя модели",
+    )
+    tune_parser.add_argument(
+        "--preprocessor",
+        type=str,
+        default=None,
+        help="Имя препроцессора",
     )
     tune_parser.add_argument(
         "--dataset",
@@ -267,7 +288,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     # 6. verify-onnx
     verify_parser = subparsers.add_parser(
         "verify-onnx",
-        help="Автономная проверка инференса ONNX-файла и сверка с Joblib",
+        help="Автономная проверка инференса ONNX-файла и сверка с сохраненным Pipeline",
     )
     verify_parser.add_argument(
         "--onnx",
@@ -285,7 +306,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         "--joblib",
         type=str,
         default=None,
-        help="Путь к связанной Joblib-модели для проверки эквивалентности",
+        help="Путь к Joblib-файлу сохраненного Pipeline",
     )
     verify_parser.add_argument(
         "--atol",
@@ -302,15 +323,28 @@ def handle_list() -> None:
     models_data = []
     for name in list_models():
         reg = MODELS_REGISTRY[name]
+        default_prep = get_default_preprocessor_for_model(name)
         params_str = ", ".join(f"{k}={v}" for k, v in list(reg.default_params.items())[:3])
         if len(reg.default_params) > 3:
             params_str += ", ..."
         models_data.append({
             "Модель": name,
             "Класс": reg.model_class.__name__,
+            "Препроцессор по умолчанию": default_prep,
             "Параметры по умолчанию": params_str or "-",
         })
     print(_format_table(models_data))
+
+    print("\nЗарегистрированные препроцессоры:")
+    prep_data = []
+    for name in list_preprocessors():
+        reg = PREPROCESSORS_REGISTRY[name]
+        prep_data.append({
+            "Препроцессор": name,
+            "Класс": reg.preprocessor_class.__name__,
+            "Параметры": str(reg.default_params) if reg.default_params else "-",
+        })
+    print(_format_table(prep_data))
 
     print("\nЗарегистрированные метрики:")
     prob_metrics = {"roc_auc", "pr_auc"}
@@ -352,10 +386,9 @@ def handle_prep_data(args: argparse.Namespace) -> None:
 
 def handle_train(args: argparse.Namespace) -> None:
     t0 = time.perf_counter()
-    logger.info("Обучение модели '%s' на датасете: %s", args.model, args.dataset)
+    logger.info("Обучение Pipeline для модели '%s' на датасете: %s", args.model, args.dataset)
 
     X, y, _ = load_dataset(args.dataset)
-    X_proc, _ = prepare_features(X)
     y_arr = np.asarray(y)
 
     extra_params: Dict[str, Any] = {}
@@ -367,32 +400,35 @@ def handle_train(args: argparse.Namespace) -> None:
             logger.info("Загружены параметры из %s: %s", p_path, extra_params)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X_proc,
+        X,
         y_arr,
         test_size=args.test_size,
         random_state=args.random_state,
         stratify=y_arr,
     )
 
-    clf = get_model(args.model, **extra_params)
+    pipeline = create_pipeline(
+        model=args.model,
+        preprocessor=args.preprocessor,
+        model_params=extra_params,
+    )
+
     t_train_start = time.perf_counter()
-    clf.fit(X_train, y_train)
+    pipeline.fit(X_train, y_train)
     t_train = time.perf_counter() - t_train_start
 
-    y_pred = clf.predict(X_test)
-    y_prob = clf.predict_proba(X_test) if hasattr(clf, "predict_proba") else None
-    eval_metrics = calculate_metrics(y_true=y_test, y_pred=y_pred, y_prob=y_prob)
+    eval_metrics = pipeline.evaluate(X_test, y_test)
 
-    print(f"\nРезультаты на тестовой выборке ({len(X_test)} объектов, обучение: {t_train:.2f}s):")
+    print(f"\nРезультаты Pipeline на тестовой выборке ({len(X_test)} объектов, обучение: {t_train:.2f}s):")
     metrics_table = [{"Метрика": k, "Значение": f"{v:.4f}"} for k, v in eval_metrics.items()]
     print(_format_table(metrics_table))
 
     onnx_target = args.export_onnx or f"results/{args.model}.onnx"
     joblib_target = args.export_joblib or f"results/{args.model}.joblib"
 
-    logger.info("Экспорт модели в Joblib и ONNX...")
+    logger.info("Экспорт Pipeline в Joblib и ONNX...")
     artifacts = export_and_validate(
-        model=clf,
+        pipeline=pipeline,
         test_batch=X_test,
         onnx_path=onnx_target,
         joblib_path=joblib_target,
@@ -407,52 +443,36 @@ def handle_train(args: argparse.Namespace) -> None:
 
 def handle_benchmark(args: argparse.Namespace) -> None:
     t0 = time.perf_counter()
-    logger.info("Запуск бенчмарка моделей на датасете: %s (фолдов=%d)", args.dataset, args.cv)
+    logger.info("Запуск бенчмарка Pipeline на датасете: %s (фолдов=%d)", args.dataset, args.cv)
 
     X, y, _ = load_dataset(args.dataset)
-    X_proc, _ = prepare_features(X)
-    y_arr = np.asarray(y)
-
-    cv = StratifiedKFold(n_splits=args.cv, shuffle=True, random_state=args.random_state)
     requested_metrics = [m.lower().strip() for m in args.metrics]
 
     leaderboard_rows: List[Dict[str, Any]] = []
 
     for idx, model_name in enumerate(args.models, 1):
         t_model_start = time.perf_counter()
-        logger.info("[%d/%d] Тестирование модели: %s", idx, len(args.models), model_name)
+        prep_name = args.preprocessor or get_default_preprocessor_for_model(model_name)
+        logger.info("[%d/%d] Тестирование Pipeline: модель=%s, препроцессор=%s", idx, len(args.models), model_name, prep_name)
 
-        fold_metrics: Dict[str, List[float]] = {m: [] for m in requested_metrics}
-
-        for train_idx, val_idx in cv.split(X_proc, y_arr):
-            X_tr, X_val = X_proc[train_idx], X_proc[val_idx]
-            y_tr, y_val = y_arr[train_idx], y_arr[val_idx]
-
-            clf = get_model(model_name)
-            clf.fit(X_tr, y_tr)
-
-            y_pred = clf.predict(X_val)
-            y_prob = clf.predict_proba(X_val) if hasattr(clf, "predict_proba") else None
-
-            metrics_res = calculate_metrics(
-                y_true=y_val,
-                y_pred=y_pred,
-                y_prob=y_prob,
-                metric_names=requested_metrics,
-            )
-
-            for m in requested_metrics:
-                fold_metrics[m].append(metrics_res.get(m, float("nan")))
+        pipe = create_pipeline(model=model_name, preprocessor=args.preprocessor)
+        cv_res = pipe.evaluate_cv(
+            X=X,
+            y=y,
+            cv=args.cv,
+            metrics=requested_metrics,
+            random_state=args.random_state,
+        )
 
         t_model = time.perf_counter() - t_model_start
 
-        row: Dict[str, Any] = {"Модель": model_name}
+        row: Dict[str, Any] = {
+            "Модель": model_name,
+            "Препроцессор": prep_name,
+        }
         for m in requested_metrics:
-            vals = fold_metrics[m]
-            mean_val = float(np.nanmean(vals))
-            std_val = float(np.nanstd(vals))
-            row[f"{m} (mean±std)"] = f"{mean_val:.4f} ± {std_val:.3f}"
-            row[f"_{m}_mean"] = mean_val
+            row[f"{m} (mean±std)"] = cv_res[m]["formatted"]
+            row[f"_{m}_mean"] = cv_res[m]["mean"]
 
         row["Время (с)"] = f"{t_model:.2f}s"
         leaderboard_rows.append(row)
@@ -464,7 +484,7 @@ def handle_benchmark(args: argparse.Namespace) -> None:
     for r in leaderboard_rows:
         display_rows.append({k: v for k, v in r.items() if not k.startswith("_")})
 
-    print(f"\nСравнение моделей (датасет: {Path(args.dataset).name}, cv={args.cv}):")
+    print(f"\nСравнение моделей через Pipeline (датасет: {Path(args.dataset).name}, cv={args.cv}):")
     print(_format_table(display_rows))
 
     out_path = Path(args.output)
@@ -477,12 +497,13 @@ def handle_benchmark(args: argparse.Namespace) -> None:
 
 def handle_tune(args: argparse.Namespace) -> None:
     t0 = time.perf_counter()
-    logger.info("Подбор гиперпараметров для модели '%s' (датасет: %s)", args.model, args.dataset)
+    logger.info("Подбор гиперпараметров Pipeline для модели '%s' (датасет: %s)", args.model, args.dataset)
 
     X, y, _ = load_dataset(args.dataset)
 
     tuner = HyperparameterTuner(
         model=args.model,
+        preprocessor=args.preprocessor,
         config_path=args.config,
         search_type=args.search_type,
         n_iter=args.n_iter,
@@ -494,7 +515,7 @@ def handle_tune(args: argparse.Namespace) -> None:
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f"best_params_{args.model}.json"
-    result.save(out_file)
+    result.save(out_file, save_pipeline=True)
 
     total_time = time.perf_counter() - t0
     print(f"\nРезультаты подбора гиперпараметров: {args.model} ({total_time:.2f}s)")
@@ -503,7 +524,8 @@ def handle_tune(args: argparse.Namespace) -> None:
     print("  Параметры:")
     for k, v in result.best_params.items():
         print(f"    {k}: {v}")
-    print(f"  Артефакт:         {out_file}\n")
+    print(f"  Артефакт JSON:    {out_file}")
+    print(f"  Артефакт Pipeline:{out_file.with_suffix('.joblib')}\n")
 
 
 def handle_verify_onnx(args: argparse.Namespace) -> None:
@@ -530,7 +552,7 @@ def handle_verify_onnx(args: argparse.Namespace) -> None:
         print(f"    - {out['name']}: форма {out['shape']}, тип {out['type']}")
 
     if rep["matched_joblib"]:
-        print(f"\n  Сверка с Joblib:    {rep['matched_joblib']}")
+        print(f"\n  Сверка с Pipeline:  {rep['matched_joblib']}")
         print(f"  Макс. расхождение:  {rep['max_diff']:.2e} (порог atol={args.atol:.1e})")
         equiv_badge = "[OK]" if rep["is_equivalent"] else "[ERROR]"
         print(f"  Эквивалентность:    {equiv_badge}")
