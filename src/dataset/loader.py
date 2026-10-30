@@ -97,3 +97,14 @@ def load_dataset(
         np.unique(y).tolist(),
     )
     return X, y, label_encoder
+
+
+def load_schema(dataset_path: str | Path) -> Optional[dict[str, Any]]:
+    """Загружает JSON-схему данных, если файл .schema.json существует рядом с датасетом."""
+    path = Path(dataset_path).with_suffix(".schema.json")
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning("Не удалось загрузить схему из %s: %s", path, e)
+    return None
