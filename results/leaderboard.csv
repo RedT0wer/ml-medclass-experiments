@@ -1,0 +1,3 @@
+Модель,Препроцессор,roc_auc (mean±std),f1_macro (mean±std),accuracy (mean±std),recall (mean±std),precision (mean±std),Время (с)
+catboost,booster,0.9216 ± 0.008,0.6978 ± 0.009,0.8061 ± 0.008,0.6827 ± 0.009,0.7221 ± 0.014,5.52s
+logreg,scaled_onehot,0.9187 ± 0.008,0.7406 ± 0.033,0.8213 ± 0.037,0.7349 ± 0.021,0.7525 ± 0.046,0.69s

@@ -1,0 +1,9 @@
+{
+  "model_name": "logreg",
+  "best_score": 0.7096414338726256,
+  "scoring_metric": "f1_macro",
+  "best_params": {
+    "solver": "saga",
+    "C": 1.0
+  }
+}

@@ -1,0 +1,33 @@
+# Параметры моделей по умолчанию
+catboost:
+  iterations: 200
+  depth: 5
+  learning_rate: 0.05
+  random_seed: 42
+  verbose: 0
+  thread_count: -1
+
+xgboost:
+  n_estimators: 100
+  max_depth: 5
+  learning_rate: 0.1
+  random_state: 42
+  eval_metric: "mlogloss"
+  n_jobs: -1
+
+lightgbm:
+  n_estimators: 100
+  random_state: 42
+  verbose: -1
+  n_jobs: -1
+
+logreg:
+  C: 1.0
+  max_iter: 1000
+  random_state: 42
+
+random_forest:
+  n_estimators: 100
+  random_state: 42
+  n_jobs: -1
+
