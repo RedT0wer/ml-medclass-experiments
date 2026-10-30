@@ -4,6 +4,7 @@ _*/
 __pycache__/
 *.py[codz]
 *$py.class
+catboost_info/
 
 # C extensions
 *.so
@@ -220,3 +221,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+*.tar.gz
+*.zip

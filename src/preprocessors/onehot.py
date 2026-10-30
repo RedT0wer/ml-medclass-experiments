@@ -115,7 +115,6 @@ class OneHotPreprocessor(BasePreprocessor):
         check_is_fitted(self, 'transformer_')
         return self.transformer_.transform(self._to_string(X))
 
-    # ---------------------------------------------------- get_feature_names_*
 
     def get_feature_names_in(self) -> np.ndarray:
         return super().get_feature_names_in()

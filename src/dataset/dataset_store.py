@@ -27,6 +27,21 @@ class DatasetStore:
         )
 
     @staticmethod
+    def _resolve_path(path_str: str) -> Path:
+        p = Path(path_str)
+        if p.exists():
+            return p
+        parent_p = Path("..") / path_str
+        if parent_p.exists():
+            return parent_p
+        # Also check relative to workspace root if possible
+        repo_root = Path(__file__).resolve().parents[2]
+        repo_p = repo_root / path_str
+        if repo_p.exists():
+            return repo_p
+        return p
+
+    @staticmethod
     def load(
             filepath: str,
             schema_path: str,
@@ -40,7 +55,10 @@ class DatasetStore:
               автоматически превратит "MISSING" в NaN (поведение
               CategoricalDtype: значения вне categories → NaN).
         """
-        schema = json.loads(Path(schema_path).read_text(encoding='utf-8'))
+        resolved_schema_path = DatasetStore._resolve_path(schema_path)
+        resolved_filepath = DatasetStore._resolve_path(filepath)
+
+        schema = json.loads(resolved_schema_path.read_text(encoding='utf-8'))
         missing_value = schema.get('missing_value', DEFAULT_MISSING_VALUE)
 
         dtypes = {}
@@ -56,7 +74,7 @@ class DatasetStore:
             elif ftype == 'categorical':
                 dtypes[col] = CategoricalDtype(categories=cats, ordered=False)
 
-        df = pd.read_csv(filepath, dtype=dtypes, delimiter=";")
+        df = pd.read_csv(resolved_filepath, dtype=dtypes, delimiter=";")
         return df, schema
 
     @staticmethod

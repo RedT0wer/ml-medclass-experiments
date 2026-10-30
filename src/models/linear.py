@@ -121,12 +121,10 @@ class RidgeClassifierModel(BaseClassifier):
             coef_shape = coef.shape
 
         self._training_report = {
-            # === ОБЯЗАТЕЛЬНАЯ БАЗА ===
             'type': 'ridge',
             'feature_importance': self.feature_importance.tolist() if self.feature_importance is not None else None,
             'n_features_in': self._n_features,
 
-            # === СПЕЦИФИЧНЫЙ БЛОК ===
             'ridge_analysis': {
                 'alpha': self.alpha,
                 'fit_intercept': self.fit_intercept,
@@ -303,12 +301,10 @@ class SGDClassifierModel(BaseClassifier):
                         zeroed_weights += 1
 
         self._training_report = {
-            # === ОБЯЗАТЕЛЬНАЯ БАЗА ===
             'type': 'sgd',
             'feature_importance': self.feature_importance.tolist() if self.feature_importance is not None else None,
             'n_features_in': self._n_features,
 
-            # === СПЕЦИФИЧНЫЙ БЛОК ===
             'sgd_analysis': {
                 'loss': self.loss,
                 'penalty': self.penalty,

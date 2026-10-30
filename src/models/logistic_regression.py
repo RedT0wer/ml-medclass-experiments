@@ -69,15 +69,12 @@ class LogisticRegressionModel(BaseClassifier):
         """
         self.model.fit(X, y)
 
-        # Сохраняем параметры модели
         self.coefficients_ = self.model.coef_.copy()
         self.intercept_ = self.model.intercept_.copy()
         self.n_features_in_ = X.shape[1]
 
-        # Вычисляем важность признаков (средний |coef| по классам)
         self.feature_importance = np.mean(np.abs(self.coefficients_), axis=0)
 
-        # Строим отчет об обучении
         self._build_training_report()
 
         return self
@@ -116,12 +113,10 @@ class LogisticRegressionModel(BaseClassifier):
             max_iter_used = None
 
         self._training_report = {
-            # === ОБЯЗАТЕЛЬНАЯ БАЗА ===
             'type': 'linear_model',
             'feature_importance': self.feature_importance.tolist() if self.feature_importance is not None else None,
             'n_features_in': self.n_features_in_,
 
-            # === LINEAR MODEL ANALYSIS ===
             'linear_model_analysis': {
                 'coefficients_matrix_shape': list(self.coefficients_.shape) if self.coefficients_ is not None else None,
                 'coefficients': self.coefficients_.tolist() if self.coefficients_ is not None else None,

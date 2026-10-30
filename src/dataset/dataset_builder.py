@@ -37,7 +37,6 @@ class DatasetBuilder:
         self._feature_names: Optional[Dict[int, str]] = None
         self._feature_types: Optional[Dict[int, str]] = None
 
-    # ---------- загрузка исходников ----------
 
     def load_features(self) -> pd.DataFrame:
         if self.features_df is None:
@@ -72,7 +71,6 @@ class DatasetBuilder:
             self.raw_data = data_rows
         return self.feature_ids, self.raw_data
 
-    # ---------- вспомогательные словари ----------
 
     def _create_value_mapping(self) -> Dict[int, Dict[int, str]]:
         if self._value_mapping is None:
@@ -103,7 +101,6 @@ class DatasetBuilder:
             }
         return self._feature_types
 
-    # ---------- сборка датафрейма ----------
 
     def create_dataframe(
             self,
@@ -151,7 +148,6 @@ class DatasetBuilder:
 
         return pd.DataFrame(rows)
 
-    # ---------- схема ----------
 
     def _build_schema(
             self,
@@ -187,7 +183,6 @@ class DatasetBuilder:
             'missing_value_in_categories': self.missing_config.include_in_categories,
         }
 
-    # ---------- сохранение ----------
 
     def save_dataset(
             self,
@@ -210,7 +205,12 @@ class DatasetBuilder:
             excluded_features=excluded_features,
             use_value_labels=use_value_labels
         )
-        df.to_csv(filepath, index=False, **kwargs)
+        out_p = Path(filepath)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        if out_p.suffix.lower() == '.parquet':
+            df.to_parquet(filepath, index=False)
+        else:
+            df.to_csv(filepath, index=False, **kwargs)
 
         schema = self._build_schema(df, excluded_features)
         Path(schema_path).write_text(

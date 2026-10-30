@@ -18,9 +18,7 @@ from .pipeline import Pipeline
 from .validators.base import BaseValidator
 
 
-# =============================================================================
 # SCORERS
-# =============================================================================
 
 def _auroc_macro(
     y_true: np.ndarray,
@@ -55,9 +53,7 @@ def _auprc_macro(
     return float(average_precision_score(y_bin, y_score, average='macro'))
 
 
-# =============================================================================
 # EVALUATOR
-# =============================================================================
 
 class ModelEvaluator:
     """
@@ -108,7 +104,6 @@ class ModelEvaluator:
         self.pipeline_factory = pipeline_factory
         self.validator = validator
 
-    # ------------------------------------------------------------------ PUBLIC
 
     def evaluate(
         self,
@@ -122,7 +117,6 @@ class ModelEvaluator:
             class_labels = sorted(list(np.unique(y)))
         class_labels = list(class_labels)
 
-        # ---- Параметры разбиения и CV --------------------------------------
         split_info = self.validator.get_split_info()
         test_size = float(split_info.get('test_size', 0.2))
         random_state = int(split_info.get('random_state', 42))
@@ -138,7 +132,6 @@ class ModelEvaluator:
             )
         n_splits = max(2, min(requested_splits, min_class))
 
-        # ---- 1. Стратифицированный holdout ---------------------------------
         indices = np.arange(len(y))
         (
             X_train, X_test, y_train, y_test, idx_train, idx_test,
@@ -149,7 +142,6 @@ class ModelEvaluator:
             random_state=random_state,
         )
 
-        # ---- 2. CV на X_train ----------------------------------------------
         scoring = self._build_scoring()
         t_start = time.time()
         cv_results = cross_validate(
@@ -181,13 +173,11 @@ class ModelEvaluator:
             'total_folds': total_folds,
         }
 
-        # ---- 3. Финальная модель на X_train --------------------------------
         t_fit = time.time()
         final_pipeline = self.pipeline_factory().fit(X_train, y_train)
         fit_full_seconds = time.time() - t_fit
         training_data = final_pipeline.get_training_history()
 
-        # ---- 4. Holdout на X_test ------------------------------------------
         t_pred = time.time()
         y_pred_test = final_pipeline.predict(X_test)
         y_proba_test_raw = final_pipeline.predict_proba(X_test)
@@ -203,7 +193,6 @@ class ModelEvaluator:
             class_labels=class_labels,
         )
 
-        # ---- 5. Сборка результата ------------------------------------------
         try:
             prep_params = dict(
                 final_pipeline.preprocessor.get_params(deep=False)
@@ -270,14 +259,12 @@ class ModelEvaluator:
 
         return result
 
-    # ----------------------------------------------------------------- HELPERS
 
     @staticmethod
     def _class_distribution(y: np.ndarray) -> Dict[str, int]:
         values, counts = np.unique(np.asarray(y), return_counts=True)
         return {str(v): int(c) for v, c in zip(values, counts)}
 
-    # ----------------------------------------------------------------- SCORING
 
     def _build_scoring(self) -> Dict[str, Any]:
         return {
@@ -301,7 +288,6 @@ class ModelEvaluator:
             'cohen_kappa': make_scorer(cohen_kappa_score),
         }
 
-    # --------------------------------------------------------------- HOLDOUT
 
     def _build_holdout_block(
         self,
@@ -355,7 +341,6 @@ class ModelEvaluator:
             'pr_curves': self._pr(y_true, y_proba, class_labels),
         }
 
-    # --------------------------------------------------------------- DETAILED
 
     def _compute_detailed(
         self,
@@ -417,7 +402,6 @@ class ModelEvaluator:
 
         return detailed
 
-    # ------------------------------------------------------------- ROC / PR
 
     @staticmethod
     def _align_proba(
@@ -523,7 +507,6 @@ class ModelEvaluator:
             'macro_ap': float(np.mean(ap_values)),
         }
 
-    # ------------------------------------------------------- LEARNING CURVES
 
     def _compute_learning_curves(
         self,

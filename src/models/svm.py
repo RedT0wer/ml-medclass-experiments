@@ -72,7 +72,6 @@ class SVMModel(BaseClassifier):
         self._n_support_vectors: Optional[np.ndarray] = None
         self._support_vectors_ratio: Optional[float] = None
 
-    # ------------------------------------------------------------------ FIT
 
     def fit(
             self,
@@ -104,7 +103,6 @@ class SVMModel(BaseClassifier):
         self._build_training_report()
         return self
 
-    # -------------------------------------------------------------- PREDICT
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         return self.model.predict(np.asarray(X))
@@ -121,7 +119,6 @@ class SVMModel(BaseClassifier):
             )
         return self.model.predict_proba(np.asarray(X))
 
-    # --------------------------------------------------------------- REPORT
 
     def _build_training_report(self) -> None:
         report: Dict[str, Any] = {
@@ -197,7 +194,6 @@ class SVMModel(BaseClassifier):
         else:
             return 'strong_overfitting'
 
-    # ------------------------------------------------------------------ MISC
 
     def get_model_params(self) -> Dict[str, Any]:
         return {

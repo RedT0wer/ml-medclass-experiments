@@ -32,9 +32,7 @@ class BasePreprocessor(TransformerMixin, BaseEstimator):
     def transform(self, X):
         """Применяет трансформацию к данным."""
 
-    # ------------------------------------------------------------------
     # get_feature_names_*
-    # ------------------------------------------------------------------
 
     def get_feature_names_in(self) -> np.ndarray:
         """

@@ -28,7 +28,6 @@ class MissingValueConfig:
         if not isinstance(self.value, str) or not self.value:
             raise ValueError("MissingValueConfig.value должен быть непустой строкой")
 
-    # --- производные значения, чтобы не дублировать логику по коду ---
 
     def cell_value(self) -> Optional[str]:
         """Что записывать в ячейку CSV при пропуске (None → NaN/пусто)."""

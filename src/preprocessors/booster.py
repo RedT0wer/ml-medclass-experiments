@@ -49,7 +49,6 @@ class BoosterPreprocessor(BasePreprocessor):
         df = self._to_dataframe(X)
         return self.encoder_.transform(self._fill_missing(df)).astype(int)
 
-    # ---------------------------------------------------- get_feature_names_*
 
     def get_feature_names_in(self) -> np.ndarray:
         return super().get_feature_names_in()
@@ -59,7 +58,6 @@ class BoosterPreprocessor(BasePreprocessor):
         # базовая реализация как раз это и делает.
         return super().get_feature_names_out(input_features)
 
-    # ---------------------------------------------------------------- HELPERS
 
     def _to_dataframe(self, X: Any) -> pd.DataFrame:
         if isinstance(X, pd.DataFrame):

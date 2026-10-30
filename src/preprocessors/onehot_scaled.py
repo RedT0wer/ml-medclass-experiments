@@ -36,7 +36,6 @@ class ScaledOneHotPreprocessor(BasePreprocessor):
         self.missing_value = missing_value
         self.scale_ordinal_features = scale_ordinal_features
 
-    # ------------------------------------------------------------------ FIT
 
     def fit(self, X, y=None) -> 'ScaledOneHotPreprocessor':
         if isinstance(X, pd.DataFrame):
@@ -100,7 +99,6 @@ class ScaledOneHotPreprocessor(BasePreprocessor):
         self.feature_names_out_ = list(self.transformer_.get_feature_names_out())
         return self
 
-    # -------------------------------------------------------------- TRANSFORM
 
     def transform(self, X) -> np.ndarray:
         check_is_fitted(self, 'transformer_')
@@ -110,7 +108,6 @@ class ScaledOneHotPreprocessor(BasePreprocessor):
             df = pd.DataFrame(X, columns=self.input_columns_)
         return self.transformer_.transform(self._fill_missing(df))
 
-    # ---------------------------------------------------- get_feature_names_*
 
     def get_feature_names_in(self) -> np.ndarray:
         return super().get_feature_names_in()
@@ -119,7 +116,6 @@ class ScaledOneHotPreprocessor(BasePreprocessor):
         check_is_fitted(self, 'transformer_')
         return self.transformer_.get_feature_names_out(input_features)
 
-    # ---------------------------------------------------------------- HELPERS
 
     def _categories_for(self, active_ord: List[str]):
         cats = [self.ordinal_categories.get(feat) for feat in active_ord]

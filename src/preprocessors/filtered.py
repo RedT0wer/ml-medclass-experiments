@@ -19,7 +19,6 @@ class FilteredPreprocessor:
         # Синхронизируем публичные атрибуты
         self._sync_attrs()
 
-    # ---------- sklearn-совместимый API ----------
 
     def fit(self, X, y=None):
         if hasattr(self.base, "fit"):
@@ -52,7 +51,6 @@ class FilteredPreprocessor:
             raise AttributeError("base_preprocessor has no transform()")
         return self._select(Xp)
 
-    # ---------- внутреннее ----------
 
     def _select(self, Xp):
         if self.keep_indices is None:

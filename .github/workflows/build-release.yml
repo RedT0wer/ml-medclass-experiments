@@ -1,0 +1,117 @@
+name: Build & Release (Linux & Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Имя тега релиза (например, v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller hypothesis traitlets
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onedir --console \
+            --name medclass-cli \
+            --collect-submodules src \
+            --collect-binaries catboost \
+            --collect-data catboost \
+            --collect-binaries xgboost \
+            --collect-data xgboost \
+            --collect-binaries lightgbm \
+            --collect-data lightgbm \
+            --collect-binaries onnxruntime \
+            --collect-data onnxruntime \
+            --collect-data sklearn \
+            --hidden-import catboost \
+            --hidden-import xgboost \
+            --hidden-import lightgbm \
+            --hidden-import onnxruntime \
+            --hidden-import sklearn \
+            cli.py
+
+      - name: Archive build
+        run: |
+          tar -czvf medclass-cli-linux-x64.tar.gz -C dist medclass-cli
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          files: medclass-cli-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller hypothesis traitlets
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onedir --console `
+            --name medclass-cli `
+            --collect-submodules src `
+            --collect-binaries catboost `
+            --collect-data catboost `
+            --collect-binaries xgboost `
+            --collect-data xgboost `
+            --collect-binaries lightgbm `
+            --collect-data lightgbm `
+            --collect-binaries onnxruntime `
+            --collect-data onnxruntime `
+            --collect-data sklearn `
+            --hidden-import catboost `
+            --hidden-import xgboost `
+            --hidden-import lightgbm `
+            --hidden-import onnxruntime `
+            --hidden-import sklearn `
+            cli.py
+
+      - name: Archive build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/medclass-cli -DestinationPath medclass-cli-windows-x64.zip
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          files: medclass-cli-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

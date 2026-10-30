@@ -34,7 +34,6 @@ class GridSearchTuner:
         self.param_grid = param_grid
         self.scoring_metric = scoring_metric
 
-    # ------------------------------------------------------------------ HELPERS
 
     def _generate_param_combinations(self) -> List[Dict[str, Any]]:
         keys = list(self.param_grid.keys())
@@ -45,7 +44,6 @@ class GridSearchTuner:
         """Zero-arg фабрика для конкретной комбинации гиперпараметров."""
         return partial(self.pipeline_factory, **params)
 
-    # -------------------------------------------------------------------- MAIN
 
     def tune(
         self,
@@ -59,7 +57,6 @@ class GridSearchTuner:
         best_score = -float('inf')
         best_params: Optional[Dict[str, Any]] = None
 
-        # ---- 1. Быстрый прогон по всем комбинациям -------------------------
         for i, params in enumerate(combinations):
             print(f"  [GridSearch] Комбинация {i + 1}/{len(combinations)}: {params}")
 
@@ -81,7 +78,6 @@ class GridSearchTuner:
                 best_score = score
                 best_params = params
 
-        # ---- 2. Один детальный прогон для лучшей комбинации ----------------
         print(
             f"  [GridSearch] Детальный анализ для лучшей комбинации: {best_params}"
         )

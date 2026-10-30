@@ -1,0 +1,677 @@
+{
+  "manifest_version": "1.1.0",
+  "target_classes": {
+    "0": "Острый панкреатит: отёчная форма",
+    "1": "Острый панкреатит: некротическая форма (панкреонекроз)"
+  },
+  "features": [
+    {
+      "index": 0,
+      "key": "Sex",
+      "title": "Sex",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 1,
+      "key": "Age",
+      "title": "Age",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 2,
+      "key": "Ds naprav",
+      "title": "Ds naprav",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 3,
+      "key": "time disease",
+      "title": "Time disease",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 4,
+      "key": "chr pancr",
+      "title": "Chr pancr",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 5,
+      "key": "soput disease",
+      "title": "Soput disease",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 6,
+      "key": "compens",
+      "title": "Compens",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 7,
+      "key": "pain",
+      "title": "Pain",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 8,
+      "key": "intensiv",
+      "title": "Intensiv",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 9,
+      "key": "rvota",
+      "title": "Rvota",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 10,
+      "key": "cofe gugha",
+      "title": "Cofe gugha",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 11,
+      "key": "slabost",
+      "title": "Slabost",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 12,
+      "key": "ogirenie",
+      "title": "Ogirenie",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 13,
+      "key": "t",
+      "title": "T",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 14,
+      "key": "encef",
+      "title": "Encef",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 15,
+      "key": "bled cut",
+      "title": "Bled cut",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 16,
+      "key": "mramor cut",
+      "title": "Mramor cut",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 17,
+      "key": "icterus",
+      "title": "Icterus",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 18,
+      "key": "hipermia face",
+      "title": "Hipermia face",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 19,
+      "key": "Ps",
+      "title": "Ps",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 20,
+      "key": "AD low",
+      "title": "Ad low",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 21,
+      "key": "Kollaps",
+      "title": "Kollaps",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 22,
+      "key": "CHDD",
+      "title": "Chdd",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 23,
+      "key": "meteorism",
+      "title": "Meteorism",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 24,
+      "key": "pain of adbomin",
+      "title": "Pain of adbomin",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 25,
+      "key": "rigid of abdomi",
+      "title": "Rigid of abdomi",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 26,
+      "key": "s. peritonit",
+      "title": "S. peritonit",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 27,
+      "key": "Er",
+      "title": "Er",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 28,
+      "key": "Hb",
+      "title": "Hb",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 29,
+      "key": "L",
+      "title": "L",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 30,
+      "key": "LII",
+      "title": "Lii",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 31,
+      "key": "COE",
+      "title": "Coe",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 32,
+      "key": "Ht",
+      "title": "Ht",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 33,
+      "key": "amilase",
+      "title": "Amilase",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 34,
+      "key": "glu",
+      "title": "Glu",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 35,
+      "key": "albumin",
+      "title": "Albumin",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 36,
+      "key": "bil",
+      "title": "Bil",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 37,
+      "key": "Ur",
+      "title": "Ur",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 38,
+      "key": "gemolis",
+      "title": "Gemolis",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 39,
+      "key": "ECG",
+      "title": "Ecg",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 40,
+      "key": "LS/cen gid",
+      "title": "Ls/cen gid",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    },
+    {
+      "index": 41,
+      "key": "LS steat",
+      "title": "Ls steat",
+      "type": "float32",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scaling": {
+        "mean": 0.0,
+        "std": 1.0
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "catboost",
+      "version": "1.0.0",
+      "name": "CatBoost Classifier",
+      "format": "onnx",
+      "file_name": "catboost.onnx",
+      "sha256": "b19616e5c6f942cc073e359974a0c1e2f2310b9f38b5e1ce0d5ff45dbd919dbe",
+      "size_bytes": 620380,
+      "metrics": {
+        "roc_auc (mean±std)": 0.9203,
+        "f1_macro (mean±std)": 0.6719,
+        "accuracy (mean±std)": 0.7883,
+        "recall (mean±std)": 0.6572,
+        "precision (mean±std)": 0.699
+      },
+      "tensor_schema": {
+        "input_name": "features",
+        "shape": [
+          1,
+          42
+        ],
+        "dtype": "float32"
+      }
+    },
+    {
+      "id": "xgboost",
+      "version": "1.0.0",
+      "name": "XGBoost Classifier",
+      "format": "onnx",
+      "file_name": "xgboost.onnx",
+      "sha256": "cabf9a3724e837ab70a8e80abaa8e096dce226f9ff94458f426c3424b26b36e9",
+      "size_bytes": 239183,
+      "metrics": {
+        "roc_auc (mean±std)": 0.9022,
+        "f1_macro (mean±std)": 0.666,
+        "accuracy (mean±std)": 0.7755,
+        "recall (mean±std)": 0.6583,
+        "precision (mean±std)": 0.6785
+      },
+      "tensor_schema": {
+        "input_name": "input",
+        "shape": [
+          1,
+          42
+        ],
+        "dtype": "float32"
+      }
+    },
+    {
+      "id": "lightgbm",
+      "version": "1.0.0",
+      "name": "LightGBM Classifier",
+      "format": "onnx",
+      "file_name": "lightgbm.onnx",
+      "sha256": "539a520e388f73ee878c1e9a35f7874c633eb8ad3d4b1d6f829a04deadd2cddb",
+      "size_bytes": 305672,
+      "metrics": {
+        "roc_auc (mean±std)": 0.9081,
+        "f1_macro (mean±std)": 0.6948,
+        "accuracy (mean±std)": 0.801,
+        "recall (mean±std)": 0.6855,
+        "precision (mean±std)": 0.7134
+      },
+      "tensor_schema": {
+        "input_name": "input",
+        "shape": [
+          1,
+          42
+        ],
+        "dtype": "float32"
+      }
+    },
+    {
+      "id": "random_forest",
+      "version": "1.0.0",
+      "name": "Random Forest",
+      "format": "onnx",
+      "file_name": "random_forest.onnx",
+      "sha256": "155961050766f0e011096f8efce62bdad6eb2687be0df4e9e42ec1db9df08db1",
+      "size_bytes": 542095,
+      "metrics": {
+        "roc_auc (mean±std)": 0.9146,
+        "f1_macro (mean±std)": 0.6441,
+        "accuracy (mean±std)": 0.773,
+        "recall (mean±std)": 0.6296,
+        "precision (mean±std)": 0.6758
+      },
+      "tensor_schema": {
+        "input_name": "input",
+        "shape": [
+          1,
+          42
+        ],
+        "dtype": "float32"
+      }
+    },
+    {
+      "id": "logreg",
+      "version": "1.0.0",
+      "name": "Logistic Regression",
+      "format": "onnx",
+      "file_name": "logreg.onnx",
+      "sha256": "c7d35c00efa956bfde68c087dc78d90330cafcdfcb9ce6d0cb189bba682b8d21",
+      "size_bytes": 2229,
+      "metrics": {
+        "roc_auc (mean±std)": 0.9194,
+        "f1_macro (mean±std)": 0.713,
+        "accuracy (mean±std)": 0.7985,
+        "recall (mean±std)": 0.7082,
+        "precision (mean±std)": 0.7223
+      },
+      "tensor_schema": {
+        "input_name": "input",
+        "shape": [
+          1,
+          42
+        ],
+        "dtype": "float32"
+      }
+    }
+  ]
+}

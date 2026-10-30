@@ -44,7 +44,6 @@ class ExperimentRunner:
         self.results_dir.mkdir(parents=True, exist_ok=True)
         self.results: Dict[str, Dict[str, Any]] = {}
 
-    # ------------------------------------------------------------ EXPERIMENT DIR
 
     def _exp_dir(self, name: str) -> Path:
         """Папка эксперимента: results/<name>/ (создаётся при необходимости)."""
@@ -52,7 +51,6 @@ class ExperimentRunner:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    # ------------------------------------------------------------ MODEL FACTORY
 
     @staticmethod
     def _as_model_factory(model) -> Callable[..., BaseClassifier]:
@@ -70,7 +68,6 @@ class ExperimentRunner:
         if callable(model) and not hasattr(model, 'fit'):
             return model
 
-        # инстанс модели
         def _factory(**kw):
             if kw:
                 raise ValueError(
@@ -93,7 +90,6 @@ class ExperimentRunner:
         """
         return lambda **kw: Pipeline(preprocessor, model_factory(**kw))
 
-    # --------------------------------------------------------------- RUN SINGLE
 
     def run_single(
         self,
@@ -130,7 +126,6 @@ class ExperimentRunner:
 
         return result
 
-    # ------------------------------------------------------------ RUN GRIDSEARCH
 
     def run_gridsearch(
         self,
@@ -172,7 +167,6 @@ class ExperimentRunner:
 
         return result
 
-    # -------------------------------------------------------------- PIPELINE
 
     def get_pipeline(self, name: str) -> Pipeline:
         """
@@ -195,7 +189,6 @@ class ExperimentRunner:
             )
         return pipeline
 
-    # ------------------------------------------------------------ PIPELINE I/O
 
     def save_pipeline(self, name: str, compress: int = 3) -> str:
         """
@@ -208,7 +201,7 @@ class ExperimentRunner:
         pipeline = self.get_pipeline(name)
         filepath = self._exp_dir(name) / "pipeline.joblib"
         joblib.dump(pipeline, filepath, compress=compress)
-        print(f"💾 Pipeline сохранён: {filepath}")
+        print(f"Pipeline сохранён: {filepath}")
         return str(filepath)
 
     @staticmethod
@@ -222,7 +215,6 @@ class ExperimentRunner:
             )
         return pipeline
 
-    # ----------------------------------------------------------------- SAVE
 
     def save_result(self, name: str, format: str = 'json') -> str:
         if name not in self.results:
@@ -246,7 +238,7 @@ class ExperimentRunner:
         else:
             raise ValueError(f"Unsupported format: {format}")
 
-        print(f"💾 Результат сохранён: {filepath}")
+        print(f"Результат сохранён: {filepath}")
         return str(filepath)
 
 
@@ -281,10 +273,9 @@ class ExperimentRunner:
         else:
             raise ValueError(f"Unsupported format: {format}")
 
-        print(f"💾 Detailed сохранён: {filepath}")
+        print(f"Detailed сохранён: {filepath}")
         return str(filepath)
 
-    # --------------------------------------------------------------- SERIALIZE
 
     @staticmethod
     def _strip_pipelines(obj: Any) -> Any:
@@ -315,7 +306,6 @@ class ExperimentRunner:
             return [self._make_serializable(item) for item in obj]
         return obj
 
-    # ---------------------------------------------------------------- SLIM JSON
 
     @staticmethod
     def _slim_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:

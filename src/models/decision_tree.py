@@ -57,12 +57,10 @@ class DecisionTreeModel(BaseClassifier):
         """
         self.model.fit(X, y)
 
-        # Сохраняем метрики дерева
         self._tree_depth = self.model.get_depth()
         self._n_leaves = self.model.get_n_leaves()
         self._n_features = X.shape[1]
 
-        # Вычисляем важность признаков
         self.feature_importance = self.model.feature_importances_
 
         # Создаем полиморфный отчет обучения
@@ -84,12 +82,10 @@ class DecisionTreeModel(BaseClassifier):
         и специфичным блоком tree_analysis.
         """
         self._training_report = {
-            # === ОБЯЗАТЕЛЬНАЯ БАЗА ===
             'type': 'decision_tree',
             'feature_importance': self.feature_importance.tolist() if self.feature_importance is not None else None,
             'n_features_in': self._n_features,
 
-            # === TREE ANALYSIS ===
             'tree_analysis': {
                 'max_depth_configured': self.max_depth,
                 'actual_depth': self._tree_depth,

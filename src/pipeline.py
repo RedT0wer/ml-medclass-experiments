@@ -26,12 +26,10 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         self.preprocessor = preprocessor
         self.model = model
 
-    # ---------------------------------------------------------------- SKLEARN
 
     def __sklearn_clone__(self) -> 'Pipeline':
         return Pipeline(self.preprocessor, self.model)
 
-    # ------------------------------------------------------------------ FIT
 
     def fit(self, X, y, eval_set=None) -> 'Pipeline':
         y = np.asarray(y)
@@ -51,7 +49,6 @@ class Pipeline(BaseEstimator, ClassifierMixin):
 
         self.classes_ = np.unique(y)
 
-        # --- ВАЖНО: фиксируем, какие именно колонки реально пришли на обучение.
         # Если до fit() пользователь выкинул часть признаков из X,
         # feature_names_in_ отразит уже отобранный набор.
         prep_names = getattr(self.preprocessor_, 'feature_names_in_', None)
@@ -71,7 +68,6 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         self.feature_names_out_ = self._extract_feature_names_out()
         return self
 
-    # -------------------------------------------------------------- PREDICT
 
     def _transform(self, X) -> np.ndarray:
         if getattr(self, 'preprocessor_', None) is None:
@@ -84,7 +80,6 @@ class Pipeline(BaseEstimator, ClassifierMixin):
     def predict_proba(self, X) -> np.ndarray:
         return self.model_.predict_proba(self._transform(X))
 
-    # ------------------------------------------------------------------ MISC
 
     def get_training_history(self) -> Dict[str, Any]:
         if hasattr(self, 'model_'):
@@ -96,7 +91,6 @@ class Pipeline(BaseEstimator, ClassifierMixin):
             return self.model_.get_model_params()
         return {}
 
-    # --------------------------------------------------------------- EXPORT
 
     def _as_sklearn_pipeline(self):
         from sklearn.pipeline import Pipeline as SkPipeline
@@ -297,7 +291,6 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         return artifacts
 
 
-# -------------------------------------------------------------------- UTIL
 
 
 def _describe_inputs(input_types) -> List[Dict[str, Any]]:

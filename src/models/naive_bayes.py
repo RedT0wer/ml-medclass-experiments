@@ -40,7 +40,6 @@ class ComplementNBModel(BaseClassifier):
         self._n_features: Optional[int] = None
         self.feature_importance: Optional[np.ndarray] = None
 
-    # ------------------------------------------------------------------ FIT
 
     def fit(
             self,
@@ -67,7 +66,6 @@ class ComplementNBModel(BaseClassifier):
         self._build_training_report()
         return self
 
-    # -------------------------------------------------------------- PREDICT
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         X_scaled = self.scaler.transform(np.asarray(X))
@@ -77,7 +75,6 @@ class ComplementNBModel(BaseClassifier):
         X_scaled = self.scaler.transform(np.asarray(X))
         return self.model.predict_proba(X_scaled)
 
-    # --------------------------------------------------------------- REPORT
 
     def _build_training_report(self) -> None:
         class_prior = getattr(self.model, 'class_prior_', None)
@@ -111,7 +108,6 @@ class ComplementNBModel(BaseClassifier):
             }
         }
 
-    # ------------------------------------------------------------------ MISC
 
     def get_model_params(self) -> Dict[str, Any]:
         return {
