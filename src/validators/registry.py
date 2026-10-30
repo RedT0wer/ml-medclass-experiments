@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     Any,
@@ -60,7 +61,6 @@ class ValidatorRegistration:
 
     name: str
     validator_class: Type[Any]
-    default_params: Dict[str, Any] = field(default_factory=dict)
 
 
 VALIDATORS_REGISTRY: Dict[str, ValidatorRegistration] = {}
@@ -68,14 +68,12 @@ VALIDATORS_REGISTRY: Dict[str, ValidatorRegistration] = {}
 
 def register_validator(
     name: str,
-    default_params: Optional[Dict[str, Any]] = None,
 ) -> Callable[[Type[Any]], Type[Any]]:
     """
     Декоратор для регистрации валидатора в реестре.
 
     Args:
         name: Уникальное имя валидатора (например, 'stratified_kfold').
-        default_params: Дефолтные параметры для инициализации.
 
     Returns:
         Декорируемый класс.
@@ -86,7 +84,6 @@ def register_validator(
         VALIDATORS_REGISTRY[normalized_name] = ValidatorRegistration(
             name=normalized_name,
             validator_class=cls,
-            default_params=copy.deepcopy(default_params or {}),
         )
         logger.debug("Зарегистрирован валидатор '%s': %s", normalized_name, cls.__name__)
         return cls
@@ -117,51 +114,62 @@ def load_validators_config(
     config_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Загружает параметры валидаторов из YAML конфигурации."""
-    if config_path is None:
-        candidates = [
-            Path("configs/validators.yaml"),
-            Path("../configs/validators.yaml"),
-            Path(__file__).resolve().parents[2] / "configs/validators.yaml",
-        ]
-        for c in candidates:
-            if c.exists():
-                config_path = c
-                break
+    if config_path is not None:
+        p = Path(config_path)
+        if not p.exists():
+            raise FileNotFoundError(f"Файл конфигурации валидаторов не найден: {config_path}")
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.warning("Не удалось прочитать конфиг валидаторов %s: %s", config_path, exc)
+            return {}
 
-    if config_path is None or not Path(config_path).exists():
-        return {}
+    candidates = [
+        Path("configs/validators.yaml"),
+        Path("../configs/validators.yaml"),
+        Path(__file__).resolve().parents[2] / "configs" / "validators.yaml",
+    ]
+    for c in candidates:
+        if c.exists():
+            try:
+                with open(c, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                    return data if isinstance(data, dict) else {}
+            except Exception as exc:
+                logger.warning("Не удалось прочитать конфиг валидаторов %s: %s", c, exc)
+                return {}
 
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-            return data if isinstance(data, dict) else {}
-    except Exception as exc:
-        logger.warning("Не удалось прочитать конфиг валидаторов %s: %s", config_path, exc)
-        return {}
+    return {}
 
 
 def get_default_validator_name(
     config_path: Optional[Union[str, Path]] = None,
 ) -> str:
-    """Возвращает имя валидатора по умолчанию (по умолчанию 'stratified_kfold')."""
+    """Возвращает имя валидатора по умолчанию из validators.yaml."""
     cfg = load_validators_config(config_path)
-    return cfg.get("default", "stratified_kfold")
+    default_name = cfg.get("default")
+    if not default_name or not str(default_name).strip():
+        raise KeyError("Валидатор по умолчанию ('default') не определен в конфигурации validators.yaml")
+    return str(default_name).lower().strip()
 
 
-def get_default_params(
+def get_validator_params(
     name: str,
     config_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
-    """Возвращает параметры по умолчанию для валидатора, совмещая код и YAML-конфиг."""
-    reg = get_validator_registration(name)
-    params = copy.deepcopy(reg.default_params)
-
+    """Возвращает параметры валидатора, загруженные из YAML-конфигурации."""
+    _ = get_validator_registration(name)
     cfg = load_validators_config(config_path)
     normalized_name = name.lower().strip()
-    if normalized_name in cfg and isinstance(cfg[normalized_name], dict):
-        params.update(cfg[normalized_name])
+    params = cfg.get(normalized_name, {})
+    if isinstance(params, dict):
+        return copy.deepcopy(params)
+    return {}
 
-    return params
+
+get_default_params = get_validator_params
 
 
 class TrainTestSplitter:
@@ -208,7 +216,7 @@ class TrainTestSplitter:
 
 
 def get_validator(
-    name: Optional[str] = None,
+    name: Optional[Union[str, Any]] = None,
     config_path: Optional[Union[str, Path]] = None,
     **kwargs: Any,
 ) -> Any:
@@ -216,73 +224,44 @@ def get_validator(
     Создает и возвращает экземпляр валидатора.
 
     Args:
-        name: Имя валидатора (если не указано, берется по умолчанию StratifiedKFold).
+        name: Имя валидатора (если не указано, берется default из validators.yaml).
         config_path: Путь к YAML-конфигу параметров.
         **kwargs: Дополнительные параметры, переопределяющие дефолтные.
 
     Returns:
         Экземпляр валидатора со Scikit-Learn split() API.
+
+    Raises:
+        KeyError: Если валидатор с указанным именем не зарегистрирован или если default не определен.
     """
-    if name is None or not str(name).strip():
+    if name is not None and hasattr(name, "split") and not isinstance(name, str):
+        return name
+
+    if name is None or (isinstance(name, str) and not name.strip()):
         name = get_default_validator_name(config_path)
 
-    reg = get_validator_registration(name)
-    params = get_default_params(name, config_path=config_path)
+    val_name = str(name).lower().strip()
+    reg = get_validator_registration(val_name)
+    params = get_validator_params(val_name, config_path=config_path)
     params.update(kwargs)
+
+    if params.get("shuffle") is False and "random_state" in params:
+        params["random_state"] = None
+
+    sig = inspect.signature(reg.validator_class.__init__)
+    has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    if not has_var_keyword:
+        accepted_keys = set(sig.parameters.keys()) - {"self"}
+        params = {k: v for k, v in params.items() if k in accepted_keys}
+
     logger.debug("Создание валидатора '%s' с параметрами: %s", reg.name, params)
     return reg.validator_class(**params)
 
 
 # Регистрация стандартных валидаторов
-register_validator(
-    name="stratified_kfold",
-    default_params={
-        "n_splits": 5,
-        "shuffle": True,
-        "random_state": 42,
-    },
-)(StratifiedKFold)
-
-register_validator(
-    name="kfold",
-    default_params={
-        "n_splits": 5,
-        "shuffle": True,
-        "random_state": 42,
-    },
-)(KFold)
-
-register_validator(
-    name="stratified_shuffle_split",
-    default_params={
-        "n_splits": 5,
-        "test_size": 0.2,
-        "random_state": 42,
-    },
-)(StratifiedShuffleSplit)
-
-register_validator(
-    name="shuffle_split",
-    default_params={
-        "n_splits": 5,
-        "test_size": 0.2,
-        "random_state": 42,
-    },
-)(ShuffleSplit)
-
-register_validator(
-    name="time_series_split",
-    default_params={
-        "n_splits": 5,
-    },
-)(TimeSeriesSplit)
-
-register_validator(
-    name="train_test_split",
-    default_params={
-        "test_size": 0.2,
-        "shuffle": True,
-        "random_state": 42,
-    },
-)(TrainTestSplitter)
-
+register_validator(name="stratified_kfold")(StratifiedKFold)
+register_validator(name="kfold")(KFold)
+register_validator(name="stratified_shuffle_split")(StratifiedShuffleSplit)
+register_validator(name="shuffle_split")(ShuffleSplit)
+register_validator(name="time_series_split")(TimeSeriesSplit)
+register_validator(name="train_test_split")(TrainTestSplitter)

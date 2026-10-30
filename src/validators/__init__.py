@@ -8,6 +8,7 @@ from src.validators.registry import (
     get_default_validator_name,
     get_validator,
     get_validator_class,
+    get_validator_params,
     get_validator_registration,
     list_validators,
     load_validators_config,
@@ -23,8 +24,8 @@ __all__ = [
     "get_validator_registration",
     "get_validator_class",
     "get_default_params",
+    "get_validator_params",
     "get_default_validator_name",
     "get_validator",
     "load_validators_config",
 ]
-
