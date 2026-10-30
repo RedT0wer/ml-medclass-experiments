@@ -1,9 +1,0 @@
-{
-  "model_name": "logreg",
-  "best_score": 0.7419687029024806,
-  "scoring_metric": "f1_macro",
-  "best_params": {
-    "C": 1.0,
-    "solver": "lbfgs"
-  }
-}

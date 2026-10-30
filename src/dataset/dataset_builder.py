@@ -1,13 +1,32 @@
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 import pandas as pd
 
-from .schema_config import (
-    DEFAULT_MISSING_VALUE,
-    MissingValueConfig,
-)
+DEFAULT_MISSING_VALUE = "MISSING"
+
+
+@dataclass(frozen=True)
+class MissingValueConfig:
+    """Единая правда о представлении пропусков в CSV и в JSON-схеме."""
+
+    value: str = DEFAULT_MISSING_VALUE
+    include_in_categories: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, str) or not self.value:
+            raise ValueError("MissingValueConfig.value должен быть непустой строкой")
+
+    def cell_value(self) -> Optional[str]:
+        """Что записывать в ячейку CSV при пропуске (None -> NaN/пусто)."""
+        return self.value if self.include_in_categories else None
+
+    def categories_suffix(self) -> List[str]:
+        """Хвост, добавляемый к categories в схеме."""
+        return [self.value] if self.include_in_categories else []
+
 
 
 class DatasetBuilder:
