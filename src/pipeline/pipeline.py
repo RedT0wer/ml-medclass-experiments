@@ -36,7 +36,6 @@ class Pipeline(BaseEstimator, ClassifierMixin):
       - evaluate(): расчет метрик качества на выборке;
       - evaluate_cv(): кросс-валидация полного пайплайна;
       - save() / load(): сериализация и десериализация артефактов в Joblib;
-      - export_onnx(): экспорт в ONNX.
     """
 
     def __init__(
@@ -45,17 +44,23 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         model: Union[ClassifierProtocol, str] = "logreg",
         model_params: Optional[Dict[str, Any]] = None,
         preprocessor_params: Optional[Dict[str, Any]] = None,
+        schema: Optional[Dict[str, Any]] = None,
+        models_config_path: Optional[Union[str, Path]] = None,
+        preprocessors_config_path: Optional[Union[str, Path]] = None,
     ):
         self.preprocessor = preprocessor
         self.model = model
         self.model_params = copy.deepcopy(model_params) if model_params is not None else {}
         self.preprocessor_params = copy.deepcopy(preprocessor_params) if preprocessor_params is not None else {}
+        self.schema = copy.deepcopy(schema) if schema is not None else None
+        self.models_config_path = models_config_path
+        self.preprocessors_config_path = preprocessors_config_path
 
     def _init_components(self) -> tuple[BasePreprocessor, ClassifierProtocol]:
         """Инициализирует экземпляры препроцессора и модели из строковых имен или объектов."""
         # 1. Модель
         if isinstance(self.model, str):
-            model_inst = get_model(self.model, **self.model_params)
+            model_inst = get_model(self.model, config_path=self.models_config_path, **self.model_params)
             model_name = self.model.lower().strip()
         else:
             model_inst = copy.deepcopy(self.model)
@@ -65,11 +70,11 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         if isinstance(self.preprocessor, str):
             prep_name = self.preprocessor.lower().strip()
             if prep_name == "auto":
-                prep_name = get_default_preprocessor_for_model(model_name)
-            prep_inst = get_preprocessor(prep_name, **self.preprocessor_params)
+                prep_name = get_default_preprocessor_for_model(model_name, config_path=self.preprocessors_config_path)
+            prep_inst = get_preprocessor(prep_name, schema=self.schema, config_path=self.preprocessors_config_path, **self.preprocessor_params)
         elif self.preprocessor is None:
-            prep_name = get_default_preprocessor_for_model(model_name)
-            prep_inst = get_preprocessor(prep_name, **self.preprocessor_params)
+            prep_name = get_default_preprocessor_for_model(model_name, config_path=self.preprocessors_config_path)
+            prep_inst = get_preprocessor(prep_name, schema=self.schema, config_path=self.preprocessors_config_path, **self.preprocessor_params)
         else:
             prep_inst = copy.deepcopy(self.preprocessor)
 
@@ -188,9 +193,11 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         self,
         X: Union[pd.DataFrame, np.ndarray],
         y: Union[pd.Series, np.ndarray, Sequence[Any]],
-        cv: Union[int, Any] = 5,
+        cv: Optional[Union[int, str, Any]] = None,
+        validator: Optional[Union[str, Any]] = None,
         metrics: Optional[Sequence[str]] = None,
         random_state: int = 42,
+        validators_config_path: Optional[Union[str, Path]] = None,
     ) -> Dict[str, Any]:
         """
         Выполняет кросс-валидацию полного пайплайна без утечки данных.
@@ -199,12 +206,20 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         y_arr = np.asarray(y)
         requested_metrics = [m.lower().strip() for m in metrics] if metrics else ["accuracy", "f1_macro", "roc_auc"]
 
-        if isinstance(cv, int):
-            cv_splitter = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
-        elif hasattr(cv, "split"):
-            cv_splitter = cv
+        val_target = validator if validator is not None else cv
+        if val_target is None:
+            from src.validators.registry import get_validator
+            cv_splitter = get_validator(None, config_path=validators_config_path)
+        elif isinstance(val_target, str):
+            from src.validators.registry import get_validator
+            cv_splitter = get_validator(val_target, config_path=validators_config_path)
+        elif hasattr(val_target, "split"):
+            cv_splitter = val_target
+        elif isinstance(val_target, int):
+            from src.validators.registry import get_validator
+            cv_splitter = get_validator(None, config_path=validators_config_path, n_splits=val_target)
         else:
-            raise ValueError(f"Неподдерживаемый тип cv: {type(cv)}")
+            raise ValueError(f"Неподдерживаемый тип cv / validator: {type(val_target)}")
 
         fold_results: Dict[str, List[float]] = {m: [] for m in requested_metrics}
 
@@ -265,6 +280,9 @@ class Pipeline(BaseEstimator, ClassifierMixin):
             "model": self.model,
             "model_params": copy.deepcopy(self.model_params),
             "preprocessor_params": copy.deepcopy(self.preprocessor_params),
+            "schema": copy.deepcopy(self.schema),
+            "models_config_path": self.models_config_path,
+            "preprocessors_config_path": self.preprocessors_config_path,
         }
         if deep:
             # Предоставляем прямой доступ к гиперпараметрам модели и препроцессора
@@ -279,10 +297,16 @@ class Pipeline(BaseEstimator, ClassifierMixin):
         for key, value in params.items():
             if key in ("preprocessor", "model"):
                 setattr(self, key, value)
+            elif key == "schema":
+                self.schema = copy.deepcopy(value)
             elif key == "model_params":
                 self.model_params = copy.deepcopy(value)
             elif key == "preprocessor_params":
                 self.preprocessor_params = copy.deepcopy(value)
+            elif key == "models_config_path":
+                self.models_config_path = value
+            elif key == "preprocessors_config_path":
+                self.preprocessors_config_path = value
             elif key.startswith("model__"):
                 sub_key = key[len("model__") :]
                 self.model_params[sub_key] = value
@@ -300,6 +324,9 @@ class Pipeline(BaseEstimator, ClassifierMixin):
             model=self.model,
             model_params=copy.deepcopy(self.model_params),
             preprocessor_params=copy.deepcopy(self.preprocessor_params),
+            schema=copy.deepcopy(self.schema),
+            models_config_path=self.models_config_path,
+            preprocessors_config_path=self.preprocessors_config_path,
         )
 
 
@@ -309,6 +336,8 @@ def create_pipeline(
     model_params: Optional[Dict[str, Any]] = None,
     preprocessor_params: Optional[Dict[str, Any]] = None,
     schema: Optional[Dict[str, Any]] = None,
+    models_config_path: Optional[Union[str, Path]] = None,
+    preprocessors_config_path: Optional[Union[str, Path]] = None,
     **kwargs: Any,
 ) -> Pipeline:
     """
@@ -317,29 +346,14 @@ def create_pipeline(
     m_params = copy.deepcopy(model_params or {})
     m_params.update(kwargs)
 
-    prep: Union[str, BasePreprocessor]
-    if preprocessor is None:
-        prep = "auto"
-    elif isinstance(preprocessor, str):
-        prep = preprocessor
-    else:
-        prep = preprocessor
-
-    if schema is not None and isinstance(prep, str):
-        prep_inst = create_preprocessor(
-            name_or_model=prep if prep != "auto" else (model if isinstance(model, str) else "logreg"),
-            schema=schema,
-            **(preprocessor_params or {}),
-        )
-        return Pipeline(
-            preprocessor=prep_inst,
-            model=model,
-            model_params=m_params,
-        )
+    prep = "auto" if preprocessor is None else preprocessor
 
     return Pipeline(
         preprocessor=prep,
         model=model,
         model_params=m_params,
         preprocessor_params=preprocessor_params,
+        schema=schema,
+        models_config_path=models_config_path,
+        preprocessors_config_path=preprocessors_config_path,
     )

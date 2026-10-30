@@ -28,6 +28,15 @@ def _to_numpy_float32(data: Union[np.ndarray, pd.DataFrame]) -> np.ndarray:
     return arr
 
 
+def export_joblib(pipeline: Pipeline, filepath: Union[str, Path]) -> Path:
+    """
+    Экспортирует пайплайн в формат Joblib.
+    """
+    if not isinstance(pipeline, Pipeline):
+        raise TypeError(f"export_joblib ожидает Pipeline, получен {type(pipeline).__name__}")
+    return pipeline.save(filepath)
+
+
 def export_onnx(
     pipeline: Pipeline,
     filepath: Union[str, Path],
@@ -180,7 +189,7 @@ def export_and_validate(
     artifacts: Dict[str, Path] = {}
 
     if joblib_path is not None:
-        artifacts["joblib"] = export_joblib(pipeline, joblib_path)
+        artifacts["joblib"] = pipeline.save(joblib_path)
 
     if onnx_path is not None:
         out_onnx = export_onnx(pipeline, onnx_path, sample_input=test_batch)

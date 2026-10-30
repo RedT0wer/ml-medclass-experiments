@@ -16,6 +16,7 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, Stratified
 
 from src.pipeline.pipeline import Pipeline, create_pipeline
 from src.preprocessors.base import BasePreprocessor
+from src.validators.registry import get_validator
 
 logger = logging.getLogger(__name__)
 
@@ -114,12 +115,38 @@ class HyperparameterTuner:
         search_type: str = "grid",
         n_iter: int = 10,
         scoring: str = "f1_macro",
-        cv: int = 5,
+        validator: Optional[Union[str, Any]] = None,
+        cv: Optional[Union[int, str, Any]] = None,
         random_state: int = 42,
         n_jobs: int = -1,
+        schema: Optional[Dict[str, Any]] = None,
+        validators_config_path: Optional[Union[str, Path]] = None,
     ):
         self.model_name = model.lower().strip()
         self.preprocessor = preprocessor
+        self.schema = copy.deepcopy(schema) if schema is not None else None
+        self.validators_config_path = validators_config_path
+
+        # Разрешение валидатора
+        val_target = validator if validator is not None else cv
+        if val_target is not None:
+            if isinstance(val_target, str):
+                self.validator_name = val_target
+                self.cv_splitter = get_validator(val_target, config_path=self.validators_config_path)
+            elif hasattr(val_target, "split"):
+                self.validator_name = type(val_target).__name__
+                self.cv_splitter = val_target
+            elif isinstance(val_target, int):
+                self.validator_name = None
+                self.cv_splitter = get_validator(None, config_path=self.validators_config_path, n_splits=val_target)
+            else:
+                raise TypeError(f"Неподдерживаемый тип валидатора: {type(val_target)}")
+        else:
+            self.validator_name = None
+            self.cv_splitter = get_validator(None, config_path=self.validators_config_path)
+
+        self.validator = self.cv_splitter
+        self.cv = self.cv_splitter
 
         if param_grid is not None:
             self.raw_grid = copy.deepcopy(param_grid)
@@ -135,7 +162,6 @@ class HyperparameterTuner:
         self.search_type = search_type.lower().strip()
         self.n_iter = n_iter
         self.scoring = scoring
-        self.cv = cv
         self.random_state = random_state
         self.n_jobs = n_jobs
 
@@ -148,24 +174,21 @@ class HyperparameterTuner:
         Запускает подбор гиперпараметров пайплайна (препроцессор + модель) через кросс-валидацию.
         """
         logger.info(
-            "Старт тюнинга пайплайна для модели '%s' (метод=%s, scoring=%s, cv=%d, вариантов=%s)",
+            "Старт тюнинга пайплайна для модели '%s' (метод=%s, scoring=%s, validator=%s, вариантов=%s)",
             self.model_name,
             self.search_type,
             self.scoring,
-            self.cv,
+            self.validator_name or type(self.cv_splitter).__name__,
             len(self.param_grid),
         )
 
         base_pipe = create_pipeline(
             model=self.model_name,
             preprocessor=self.preprocessor,
+            schema=self.schema,
         )
 
-        cv_splitter = StratifiedKFold(
-            n_splits=self.cv,
-            shuffle=True,
-            random_state=self.random_state,
-        )
+        cv_splitter = self.cv_splitter
 
         y_arr = np.asarray(y)
 
@@ -235,25 +258,33 @@ def tune_model(
     X: Union[pd.DataFrame, np.ndarray],
     y: Union[pd.Series, np.ndarray],
     preprocessor: Optional[Union[str, BasePreprocessor]] = None,
+    param_grid: Optional[Dict[str, List[Any]]] = None,
     config_path: Optional[Union[str, Path]] = None,
     search_type: str = "grid",
     n_iter: int = 10,
     scoring: str = "f1_macro",
-    cv: int = 5,
+    validator: Optional[Union[str, Any]] = None,
+    cv: Optional[Union[int, str, Any]] = None,
     random_state: int = 42,
     n_jobs: int = -1,
+    schema: Optional[Dict[str, Any]] = None,
+    validators_config_path: Optional[Union[str, Path]] = None,
 ) -> TuningResult:
     """Удобная функция-фасад для подбора гиперпараметров Pipeline."""
     tuner = HyperparameterTuner(
         model=model,
         preprocessor=preprocessor,
+        param_grid=param_grid,
         config_path=config_path,
         search_type=search_type,
         n_iter=n_iter,
         scoring=scoring,
+        validator=validator,
         cv=cv,
         random_state=random_state,
         n_jobs=n_jobs,
+        schema=schema,
+        validators_config_path=validators_config_path,
     )
     return tuner.tune(X, y)
 
