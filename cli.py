@@ -11,21 +11,32 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+import yaml
 from sklearn.model_selection import train_test_split
 from tabulate import tabulate
 
 from src.dataset.dataset_builder import DatasetBuilder
-from src.dataset.loader import load_dataset
+from src.dataset.loader import load_dataset, load_schema
 from src.export.exporter import export_and_validate, verify_onnx_file
 from src.metrics.registry import list_metrics
-from src.models.registry import MODELS_REGISTRY, list_models
+from src.models.registry import (
+    MODELS_REGISTRY,
+    list_models,
+    load_models_config
+)
 from src.pipeline.pipeline import create_pipeline
 from src.preprocessors.registry import (
     PREPROCESSORS_REGISTRY,
     get_default_preprocessor_for_model,
     list_preprocessors,
+    load_preprocessors_config,
 )
 from src.tuning.tuner import HyperparameterTuner
+from src.validators.registry import (
+    VALIDATORS_REGISTRY,
+    list_validators,
+    load_validators_config,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,10 +69,10 @@ CHEATSHEET = """
 Примеры использования:
   python cli.py list
   python cli.py prep-data --output data/processed/dataset.parquet
-  python cli.py train --model catboost --export-onnx results/catboost.onnx --export-joblib results/catboost.joblib
-  python cli.py benchmark --models catboost xgboost logreg --cv 5
-  python cli.py tune --model catboost --cv 5
-  python cli.py verify-onnx --onnx results/catboost.onnx --joblib results/catboost.joblib
+  python cli.py train --model catboost --export-onnx _results/catboost.onnx --export-joblib _results/catboost.joblib
+  python cli.py benchmark --models catboost xgboost logreg --validator stratified_kfold
+  python cli.py tune --model catboost --validator stratified_kfold
+  python cli.py verify-onnx --onnx _results/catboost.onnx --joblib _results/catboost.joblib
 """
 
 
@@ -146,19 +157,22 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         "--export-onnx",
         type=str,
         default=None,
-        help="Путь для экспорта в ONNX (по умолчанию: results/<model>.onnx)",
+        help="Путь для экспорта в ONNX (по умолчанию: _results/<model>.onnx)",
     )
     train_parser.add_argument(
         "--export-joblib",
         type=str,
         default=None,
-        help="Путь для экспорта всего Pipeline в Joblib (по умолчанию: results/<model>.joblib)",
+        help="Путь для экспорта всего Pipeline в Joblib (по умолчанию: _results/<model>.joblib)",
     )
     train_parser.add_argument(
+        "--model-params",
+        "--model_params",
         "--params-file",
+        dest="model_params",
         type=str,
-        default=None,
-        help="Путь к JSON-файлу гиперпараметров",
+        default="configs/models.yaml",
+        help="Путь к YAML/JSON файлу параметров моделей (по умолчанию: configs/models.yaml)",
     )
     train_parser.add_argument(
         "--test-size",
@@ -205,10 +219,20 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         help="Список рассчитываемых метрик",
     )
     bench_parser.add_argument(
+        "--validator",
         "--cv",
-        type=int,
-        default=5,
-        help="Число фолдов кросс-валидации",
+        dest="validator",
+        type=str,
+        default=None,
+        help="Имя зарегистрированного валидатора из configs/validators.yaml (по умолчанию берется default из configs/validators.yaml)",
+    )
+    bench_parser.add_argument(
+        "--model-params",
+        "--model_params",
+        dest="model_params",
+        type=str,
+        default="configs/models.yaml",
+        help="Путь к YAML-файлу параметров моделей (по умолчанию: configs/models.yaml)",
     )
     bench_parser.add_argument(
         "--random-state",
@@ -219,7 +243,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument(
         "--output",
         type=str,
-        default="results/leaderboard.csv",
+        default="_results/leaderboard.csv",
         help="Путь для сохранения лидерборда в CSV",
     )
 
@@ -260,10 +284,12 @@ def setup_cli_parser() -> argparse.ArgumentParser:
         help="Метрика оптимизации",
     )
     tune_parser.add_argument(
+        "--validator",
         "--cv",
-        type=int,
-        default=5,
-        help="Число фолдов кросс-валидации",
+        dest="validator",
+        type=str,
+        default=None,
+        help="Имя зарегистрированного валидатора из configs/validators.yaml (по умолчанию берется default из configs/validators.yaml)",
     )
     tune_parser.add_argument(
         "--search-type",
@@ -281,7 +307,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     tune_parser.add_argument(
         "--output",
         type=str,
-        default="results",
+        default="_results",
         help="Каталог сохранения результатов",
     )
 
@@ -321,28 +347,32 @@ def setup_cli_parser() -> argparse.ArgumentParser:
 def handle_list() -> None:
     print("\nЗарегистрированные модели:")
     models_data = []
+    models_cfg = load_models_config()
     for name in list_models():
         reg = MODELS_REGISTRY[name]
         default_prep = get_default_preprocessor_for_model(name)
-        params_str = ", ".join(f"{k}={v}" for k, v in list(reg.default_params.items())[:3])
-        if len(reg.default_params) > 3:
+        model_params = models_cfg.get(name, {})
+        params_str = ", ".join(f"{k}={v}" for k, v in list(model_params.items())[:3])
+        if len(model_params) > 3:
             params_str += ", ..."
         models_data.append({
             "Модель": name,
             "Класс": reg.model_class.__name__,
             "Препроцессор по умолчанию": default_prep,
-            "Параметры по умолчанию": params_str or "-",
+            "Параметры (.yaml)": params_str or "-",
         })
     print(_format_table(models_data))
 
     print("\nЗарегистрированные препроцессоры:")
     prep_data = []
+    prep_cfg = load_preprocessors_config().get("preprocessors", {})
     for name in list_preprocessors():
         reg = PREPROCESSORS_REGISTRY[name]
+        effective_params = prep_cfg.get(name, {})
         prep_data.append({
             "Препроцессор": name,
             "Класс": reg.preprocessor_class.__name__,
-            "Параметры": str(reg.default_params) if reg.default_params else "-",
+            "Параметры (.yaml)": str(effective_params) if effective_params else "-",
         })
     print(_format_table(prep_data))
 
@@ -356,6 +386,22 @@ def handle_list() -> None:
             "Многоклассовый режим": "OVR Macro" if name in prob_metrics or "macro" in name else "Да",
         })
     print(_format_table(metrics_data))
+
+    print("\nЗарегистрированные валидаторы:")
+    val_data = []
+    val_cfg = load_validators_config()
+    default_val = val_cfg.get("default", None)
+    for name in list_validators():
+        reg = VALIDATORS_REGISTRY[name]
+        is_default = " (по умолчанию)" if name == default_val else ""
+        cfg_params = val_cfg.get(name, {})
+        effective_params = cfg_params if isinstance(cfg_params, dict) else {}
+        val_data.append({
+            "Валидатор": f"{name}{is_default}",
+            "Класс": reg.validator_class.__name__,
+            "Параметры (.yaml)": str(effective_params) if effective_params else "-",
+        })
+    print(_format_table(val_data))
     print()
 
 
@@ -389,15 +435,36 @@ def handle_train(args: argparse.Namespace) -> None:
     logger.info("Обучение Pipeline для модели '%s' на датасете: %s", args.model, args.dataset)
 
     X, y, _ = load_dataset(args.dataset)
+    schema = load_schema(args.dataset)
     y_arr = np.asarray(y)
 
     extra_params: Dict[str, Any] = {}
-    if args.params_file is not None:
-        p_path = Path(args.params_file)
+    models_config_path: Optional[str] = None
+
+    model_params_arg = getattr(args, "model_params", None)
+    if model_params_arg is not None:
+        p_path = Path(model_params_arg)
         if p_path.exists():
-            data = json.loads(p_path.read_text(encoding="utf-8"))
-            extra_params = data.get("best_params", data)
-            logger.info("Загружены параметры из %s: %s", p_path, extra_params)
+            if p_path.suffix.lower() in [".yaml", ".yml"]:
+                models_config_path = str(p_path)
+                logger.info("Используется конфигурация моделей из YAML: %s", p_path)
+            elif p_path.suffix.lower() == ".json":
+                data = json.loads(p_path.read_text(encoding="utf-8"))
+                extra_params = data.get("best_params", data)
+                logger.info("Загружены параметры из JSON %s: %s", p_path, extra_params)
+            else:
+                try:
+                    with open(p_path, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                    if isinstance(data, dict):
+                        if args.model in data and isinstance(data[args.model], dict):
+                            models_config_path = str(p_path)
+                        else:
+                            extra_params = data.get("best_params", data)
+                except Exception:
+                    models_config_path = str(p_path)
+        else:
+            logger.warning("Файл параметров моделей не найден: %s", model_params_arg)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -411,6 +478,8 @@ def handle_train(args: argparse.Namespace) -> None:
         model=args.model,
         preprocessor=args.preprocessor,
         model_params=extra_params,
+        models_config_path=models_config_path,
+        schema=schema,
     )
 
     t_train_start = time.perf_counter()
@@ -423,8 +492,8 @@ def handle_train(args: argparse.Namespace) -> None:
     metrics_table = [{"Метрика": k, "Значение": f"{v:.4f}"} for k, v in eval_metrics.items()]
     print(_format_table(metrics_table))
 
-    onnx_target = args.export_onnx or f"results/{args.model}.onnx"
-    joblib_target = args.export_joblib or f"results/{args.model}.joblib"
+    onnx_target = args.export_onnx or f"_results/{args.model}.onnx"
+    joblib_target = args.export_joblib or f"_results/{args.model}.joblib"
 
     logger.info("Экспорт Pipeline в Joblib и ONNX...")
     artifacts = export_and_validate(
@@ -443,23 +512,41 @@ def handle_train(args: argparse.Namespace) -> None:
 
 def handle_benchmark(args: argparse.Namespace) -> None:
     t0 = time.perf_counter()
-    logger.info("Запуск бенчмарка Pipeline на датасете: %s (фолдов=%d)", args.dataset, args.cv)
+    val_cfg = load_validators_config()
+    val_display = args.validator or val_cfg.get("default", "default")
+    logger.info("Запуск бенчмарка Pipeline на датасете: %s (валидатор=%s)", args.dataset, val_display)
 
     X, y, _ = load_dataset(args.dataset)
+    schema = load_schema(args.dataset)
     requested_metrics = [m.lower().strip() for m in args.metrics]
 
     leaderboard_rows: List[Dict[str, Any]] = []
+
+    models_config_path: Optional[str] = None
+    model_params_arg = getattr(args, "model_params", None)
+    if model_params_arg is not None:
+        p_path = Path(model_params_arg)
+        if p_path.exists():
+            models_config_path = str(p_path)
+            logger.info("Используется конфигурация моделей из YAML: %s", p_path)
+        else:
+            logger.warning("Файл параметров моделей не найден: %s", model_params_arg)
 
     for idx, model_name in enumerate(args.models, 1):
         t_model_start = time.perf_counter()
         prep_name = args.preprocessor or get_default_preprocessor_for_model(model_name)
         logger.info("[%d/%d] Тестирование Pipeline: модель=%s, препроцессор=%s", idx, len(args.models), model_name, prep_name)
 
-        pipe = create_pipeline(model=model_name, preprocessor=args.preprocessor)
+        pipe = create_pipeline(
+            model=model_name,
+            preprocessor=args.preprocessor,
+            schema=schema,
+            models_config_path=models_config_path,
+        )
         cv_res = pipe.evaluate_cv(
             X=X,
             y=y,
-            cv=args.cv,
+            validator=args.validator,
             metrics=requested_metrics,
             random_state=args.random_state,
         )
@@ -484,7 +571,7 @@ def handle_benchmark(args: argparse.Namespace) -> None:
     for r in leaderboard_rows:
         display_rows.append({k: v for k, v in r.items() if not k.startswith("_")})
 
-    print(f"\nСравнение моделей через Pipeline (датасет: {Path(args.dataset).name}, cv={args.cv}):")
+    print(f"\nСравнение моделей через Pipeline (датасет: {Path(args.dataset).name}, validator={val_display}):")
     print(_format_table(display_rows))
 
     out_path = Path(args.output)
@@ -497,9 +584,15 @@ def handle_benchmark(args: argparse.Namespace) -> None:
 
 def handle_tune(args: argparse.Namespace) -> None:
     t0 = time.perf_counter()
-    logger.info("Подбор гиперпараметров Pipeline для модели '%s' (датасет: %s)", args.model, args.dataset)
+    logger.info(
+        "Подбор гиперпараметров Pipeline для модели '%s' (валидатор: %s, датасет: %s)",
+        args.model,
+        args.validator or "default",
+        args.dataset,
+    )
 
     X, y, _ = load_dataset(args.dataset)
+    schema = load_schema(args.dataset)
 
     tuner = HyperparameterTuner(
         model=args.model,
@@ -508,7 +601,8 @@ def handle_tune(args: argparse.Namespace) -> None:
         search_type=args.search_type,
         n_iter=args.n_iter,
         scoring=args.scoring,
-        cv=args.cv,
+        validator=args.validator,
+        schema=schema,
     )
     result = tuner.tune(X, y)
 
