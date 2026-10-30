@@ -7,9 +7,7 @@ import pandas as pd
 import pytest
 
 from src.preprocessors.booster import BoosterPreprocessor
-from src.preprocessors.filtered import FilteredPreprocessor
 from src.preprocessors.onehot import OneHotPreprocessor
-from src.preprocessors.onehot_scaled import ScaledOneHotPreprocessor
 from src.preprocessors.registry import (
     create_preprocessor,
     get_default_preprocessor_for_model,
@@ -34,7 +32,6 @@ def test_list_preprocessors() -> None:
     assert "booster" in preps
     assert "onehot" in preps
     assert "scaled_onehot" in preps
-    assert "filtered" in preps
 
 
 def test_booster_preprocessor(sample_df: pd.DataFrame) -> None:
@@ -59,23 +56,6 @@ def test_onehot_preprocessor(sample_df: pd.DataFrame) -> None:
     assert len(prep.get_feature_names_out()) == X_trans.shape[1]
 
 
-def test_scaled_onehot_preprocessor(sample_df: pd.DataFrame) -> None:
-    prep = ScaledOneHotPreprocessor()
-    X_trans = prep.fit_transform(sample_df)
-
-    assert isinstance(X_trans, np.ndarray)
-    assert X_trans.dtype == np.float32
-    assert not np.isnan(X_trans).any()
-
-def test_filtered_preprocessor(sample_df: pd.DataFrame) -> None:
-    base = BoosterPreprocessor()
-    filtered = FilteredPreprocessor(base_preprocessor=base, keep_indices=[0, 2])
-    X_trans = filtered.fit_transform(sample_df)
-
-    assert X_trans.shape == (5, 2)
-    assert len(filtered.get_feature_names_out()) == 2
-
-
 def test_preprocessor_exclude_features(sample_df: pd.DataFrame) -> None:
     prep = BoosterPreprocessor(exclude_features=["score"])
     X_trans = prep.fit_transform(sample_df)
@@ -98,6 +78,61 @@ def test_create_preprocessor_with_schema() -> None:
         }
     }
     prep = create_preprocessor("scaled_onehot", schema=schema)
-    assert isinstance(prep, ScaledOneHotPreprocessor)
+    assert isinstance(prep, OneHotPreprocessor)
     assert prep.categorical_features == ["gender"]
     assert prep.ordinal_features == ["severity"]
+
+
+def test_preprocessor_from_schema_classmethod() -> None:
+    schema = {
+        "features": {
+            "gender": {"type": "categorical", "categories": ["муж", "жен"]},
+            "severity": {"type": "ordinal", "categories": ["легкая", "средняя", "тяжелая"]},
+        }
+    }
+    prep = OneHotPreprocessor.from_schema(schema)
+    assert isinstance(prep, OneHotPreprocessor)
+    assert prep.categorical_features == ["gender"]
+    assert prep.ordinal_features == ["severity"]
+    assert prep.ordinal_categories == {"severity": ["легкая", "средняя", "тяжелая"]}
+
+
+def test_get_preprocessor_from_model_name() -> None:
+    prep_cb = get_preprocessor("catboost")
+    assert isinstance(prep_cb, BoosterPreprocessor)
+
+    prep_lr = get_preprocessor("logreg")
+    assert isinstance(prep_lr, OneHotPreprocessor)
+
+
+def test_onehot_scaling_toggle(sample_df: pd.DataFrame) -> None:
+    prep_unscaled = OneHotPreprocessor(scale_numeric=False)
+    res_unscaled = prep_unscaled.fit_transform(sample_df)
+
+    prep_scaled = OneHotPreprocessor(scale_numeric=True)
+    res_scaled = prep_scaled.fit_transform(sample_df)
+
+    assert res_unscaled.shape == res_scaled.shape
+    # В масштабированной версии значения числовой колонки age центрированы
+    assert not np.array_equal(res_unscaled, res_scaled)
+
+
+def test_pipeline_with_schema_integration(sample_df: pd.DataFrame) -> None:
+    from src.pipeline.pipeline import create_pipeline
+
+    schema = {
+        "features": {
+            "gender": {"type": "categorical", "categories": ["муж", "жен"]},
+            "severity": {"type": "ordinal", "categories": ["легкая", "средняя", "тяжелая"]},
+        }
+    }
+    y = np.array([0, 1, 0, 1, 0])
+    pipe = create_pipeline(model="logreg", preprocessor="scaled_onehot", schema=schema)
+    pipe.fit(sample_df, y)
+
+    assert hasattr(pipe, "preprocessor_")
+    assert pipe.preprocessor_.categorical_features == ["gender"]
+    assert pipe.preprocessor_.ordinal_features == ["severity"]
+
+    preds = pipe.predict(sample_df)
+    assert len(preds) == len(sample_df)

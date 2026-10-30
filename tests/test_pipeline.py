@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 from sklearn.base import clone
 
 from src.pipeline.pipeline import Pipeline, create_pipeline
@@ -103,3 +104,23 @@ def test_pipeline_sklearn_clone(synthetic_data: tuple[pd.DataFrame, np.ndarray])
 
     pipe_cloned.fit(X, y)
     assert hasattr(pipe_cloned, "model_")
+
+
+def test_pipeline_models_config_path(synthetic_data: tuple[pd.DataFrame, np.ndarray]) -> None:
+    X, y = synthetic_data
+    with tempfile.TemporaryDirectory() as tmpdir:
+        custom_yaml = Path(tmpdir) / "models.yaml"
+        with open(custom_yaml, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"logreg": {"C": 0.042, "max_iter": 333}}, f)
+
+        pipe = create_pipeline(model="logreg", models_config_path=custom_yaml)
+        pipe.fit(X, y)
+        assert pipe.model_.C == 0.042
+        assert pipe.model_.max_iter == 333
+
+        pipe_cloned = clone(pipe)
+        assert pipe_cloned.models_config_path == custom_yaml
+        pipe_cloned.fit(X, y)
+        assert pipe_cloned.model_.C == 0.042
+        assert pipe_cloned.model_.max_iter == 333
+

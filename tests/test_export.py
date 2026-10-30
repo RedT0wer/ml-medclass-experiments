@@ -12,6 +12,7 @@ import pytest
 
 from src.export.exporter import (
     export_and_validate,
+    export_joblib,
     export_onnx,
     validate_onnx,
     verify_onnx_file,

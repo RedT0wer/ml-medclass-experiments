@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
+import yaml
 
 from src.models.registry import (
     MODELS_REGISTRY,
     get_default_params,
     get_model,
+    get_model_params,
     list_models,
+    load_models_config,
     register_model,
 )
 
@@ -49,9 +55,10 @@ def test_duck_typing_and_fit(model_name: str, synthetic_data: tuple[np.ndarray, 
 def test_custom_model_registration() -> None:
     from sklearn.dummy import DummyClassifier
 
-    @register_model("dummy_clf", default_params={"strategy": "most_frequent"})
+    @register_model("dummy_clf")
     class CustomDummy(DummyClassifier):
-        pass
+        def __init__(self, strategy: str = "most_frequent", **kwargs):
+            super().__init__(strategy=strategy, **kwargs)
 
     assert "dummy_clf" in list_models()
     model = get_model("dummy_clf")
@@ -62,7 +69,33 @@ def test_custom_model_registration() -> None:
     assert model2.strategy == "prior"
 
 
-def test_get_default_params() -> None:
-    params = get_default_params("logreg")
+def test_get_model_params() -> None:
+    params = get_model_params("logreg")
     assert isinstance(params, dict)
     assert "C" in params
+    assert params["C"] == 1.0
+
+
+def test_get_default_params_alias() -> None:
+    params = get_default_params("logreg")
+    assert isinstance(params, dict)
+    assert params.get("max_iter") == 1000
+
+
+def test_load_models_config_and_custom_yaml() -> None:
+    cfg = load_models_config()
+    assert "logreg" in cfg
+    assert "catboost" in cfg
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        custom_yaml = Path(tmpdir) / "custom_models.yaml"
+        with open(custom_yaml, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"logreg": {"C": 0.05, "max_iter": 500}}, f)
+
+        custom_params = get_model_params("logreg", config_path=custom_yaml)
+        assert custom_params["C"] == 0.05
+        assert custom_params["max_iter"] == 500
+
+        model = get_model("logreg", config_path=custom_yaml)
+        assert model.C == 0.05
+        assert model.max_iter == 500
