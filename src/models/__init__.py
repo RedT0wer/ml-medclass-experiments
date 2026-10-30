@@ -7,8 +7,10 @@ from .registry import (
     get_default_params,
     get_model,
     get_model_class,
+    get_model_params,
     get_model_registration,
     list_models,
+    load_models_config,
     register_model,
 )
 
@@ -19,7 +21,9 @@ __all__ = [
     "get_default_params",
     "get_model",
     "get_model_class",
+    "get_model_params",
     "get_model_registration",
     "list_models",
+    "load_models_config",
     "register_model",
 ]
