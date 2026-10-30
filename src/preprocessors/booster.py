@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -26,43 +26,33 @@ class BoosterPreprocessor(BasePreprocessor):
     def __init__(
         self,
         missing_value: str = "отсутствует",
+        categorical_features: Optional[Sequence[str]] = None,
+        ordinal_features: Optional[Sequence[str]] = None,
+        ordinal_categories: Optional[Dict[str, List[str]]] = None,
         exclude_features: Optional[Sequence[str]] = None,
         unknown_value: int = -1,
+        **kwargs: Any,
     ):
-        super().__init__(exclude_features=exclude_features)
-        self.missing_value = str(missing_value)
+        super().__init__(missing_value=missing_value, exclude_features=exclude_features)
+        self.categorical_features = list(categorical_features) if categorical_features is not None else None
+        self.ordinal_features = list(ordinal_features) if ordinal_features is not None else None
+        self.ordinal_categories = dict(ordinal_categories) if ordinal_categories is not None else {}
         self.unknown_value = int(unknown_value)
-
-    def _fill_missing(self, df: pd.DataFrame) -> pd.DataFrame:
-        df_filled = df.copy()
-        for col in df_filled.columns:
-            if not pd.api.types.is_numeric_dtype(df_filled[col]):
-                df_filled[col] = df_filled[col].fillna(self.missing_value)
-                df_filled[col] = df_filled[col].replace(
-                    ["", None, np.nan, "NaN", "nan", "None", "MISSING"],
-                    self.missing_value,
-                )
-                df_filled[col] = df_filled[col].astype(str)
-            else:
-                # Для числовых колонок заполняем медианой или 0
-                if df_filled[col].isna().any():
-                    median_val = df_filled[col].median()
-                    df_filled[col] = df_filled[col].fillna(0.0 if pd.isna(median_val) else median_val)
-        return df_filled
 
     def fit(self, X: Union[pd.DataFrame, np.ndarray], y: Optional[Any] = None) -> BoosterPreprocessor:
         df = self._prepare_input_df(X)
         self.feature_names_in_ = list(df.columns)
         self.n_features_in_ = int(len(df.columns))
 
-        df_filled = self._fill_missing(df)
+        cat_cols, ord_cols, num_cols = self._split_columns(
+            df,
+            categorical_features=self.categorical_features,
+            ordinal_features=self.ordinal_features,
+        )
+        self.categorical_cols_ = cat_cols + ord_cols
+        self.numeric_cols_ = num_cols
 
-        self.categorical_cols_ = [
-            c for c in df_filled.columns if not pd.api.types.is_numeric_dtype(df_filled[c])
-        ]
-        self.numeric_cols_ = [
-            c for c in df_filled.columns if c not in self.categorical_cols_
-        ]
+        df_filled = self._fill_missing(df, categorical_cols=self.categorical_cols_, numeric_cols=self.numeric_cols_)
 
         if self.categorical_cols_:
             self.encoder_ = OrdinalEncoder(
@@ -87,14 +77,12 @@ class BoosterPreprocessor(BasePreprocessor):
                 df[col] = self.missing_value
 
         df = df[self.feature_names_in_]
-        df_filled = self._fill_missing(df)
+        df_filled = self._fill_missing(df, categorical_cols=self.categorical_cols_, numeric_cols=self.numeric_cols_)
 
-        # Обрабатываем колонки в исходном порядке
         out_cols = []
         for col in self.feature_names_in_:
             if col in self.categorical_cols_:
                 cat_idx = self.categorical_cols_.index(col)
-                # Извлекаем закодированный вектор
                 col_enc = self.encoder_.transform(df_filled[self.categorical_cols_])[:, cat_idx]
                 out_cols.append(col_enc.reshape(-1, 1))
             else:
@@ -102,8 +90,5 @@ class BoosterPreprocessor(BasePreprocessor):
                 out_cols.append(num_vals.reshape(-1, 1))
 
         if out_cols:
-            result = np.hstack(out_cols).astype(np.float32)
-        else:
-            result = np.empty((len(df), 0), dtype=np.float32)
-
-        return result
+            return np.hstack(out_cols).astype(np.float32)
+        return np.empty((len(df), 0), dtype=np.float32)

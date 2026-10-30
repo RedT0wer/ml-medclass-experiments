@@ -1,4 +1,4 @@
-"""One-Hot препроцессор категориальных и порядковых признаков."""
+"""One-Hot препроцессор категориальных и порядковых признаков с опциональным масштабированием."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline as SkPipeline
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.utils.validation import check_is_fitted
 
 from src.preprocessors.base import BasePreprocessor
@@ -22,7 +24,9 @@ class OneHotPreprocessor(BasePreprocessor):
 
     Поддерживает:
       - автоматическое определение или явную спецификацию категориальных и порядковых признаков;
-      - обработку отсутствующих категорий при инференсе;
+      - сохранение заданного порядка категорий для ordinal признаков;
+      - опциональное масштабирование (StandardScaler) для числовых и порядковых признаков;
+      - обработку пропущенных значений и отсутствующих категорий при инференсе;
       - сохранение имен признаков feature_names_in_ и feature_names_out_.
     """
 
@@ -32,58 +36,36 @@ class OneHotPreprocessor(BasePreprocessor):
         ordinal_features: Optional[Sequence[str]] = None,
         ordinal_categories: Optional[Dict[str, List[str]]] = None,
         missing_value: str = "отсутствует",
+        scale_numeric: bool = False,
+        scale_ordinal_features: bool = False,
         exclude_features: Optional[Sequence[str]] = None,
     ):
-        super().__init__(exclude_features=exclude_features)
+        super().__init__(missing_value=missing_value, exclude_features=exclude_features)
         self.categorical_features = list(categorical_features) if categorical_features is not None else None
         self.ordinal_features = list(ordinal_features) if ordinal_features is not None else None
         self.ordinal_categories = dict(ordinal_categories) if ordinal_categories is not None else {}
-        self.missing_value = str(missing_value)
-
-    def _fill_missing(self, df: pd.DataFrame) -> pd.DataFrame:
-        df_filled = df.copy()
-        for col in df_filled.columns:
-            if not pd.api.types.is_numeric_dtype(df_filled[col]) and col not in getattr(self, "active_num_", []):
-                df_filled[col] = df_filled[col].fillna(self.missing_value)
-                df_filled[col] = df_filled[col].replace(
-                    ["", None, np.nan, "NaN", "nan", "None", "MISSING"],
-                    self.missing_value,
-                )
-                df_filled[col] = df_filled[col].astype(str)
-            else:
-                df_filled[col] = pd.to_numeric(df_filled[col], errors="coerce")
-                if df_filled[col].isna().any():
-                    median_val = df_filled[col].median()
-                    df_filled[col] = df_filled[col].fillna(0.0 if pd.isna(median_val) else median_val)
-        return df_filled
+        self.scale_numeric = bool(scale_numeric)
+        self.scale_ordinal_features = bool(scale_ordinal_features)
 
     def fit(self, X: Union[pd.DataFrame, np.ndarray], y: Optional[Any] = None) -> OneHotPreprocessor:
         df = self._prepare_input_df(X)
         self.feature_names_in_ = list(df.columns)
         self.n_features_in_ = int(len(df.columns))
 
-        df_filled = self._fill_missing(df)
-
-        # Определение колонок
-        if self.categorical_features is not None:
-            active_cat = [c for c in self.categorical_features if c in df_filled.columns]
-        else:
-            active_cat = [
-                c for c in df_filled.columns
-                if not pd.api.types.is_numeric_dtype(df_filled[c])
-                and (self.ordinal_features is None or c not in self.ordinal_features)
-            ]
-
-        if self.ordinal_features is not None:
-            active_ord = [c for c in self.ordinal_features if c in df_filled.columns and c not in active_cat]
-        else:
-            active_ord = []
-
-        active_num = [c for c in df_filled.columns if c not in active_cat and c not in active_ord]
-
+        active_cat, active_ord, active_num = self._split_columns(
+            df,
+            categorical_features=self.categorical_features,
+            ordinal_features=self.ordinal_features,
+        )
         self.active_cat_ = active_cat
         self.active_ord_ = active_ord
         self.active_num_ = active_num
+
+        df_filled = self._fill_missing(
+            df,
+            categorical_cols=active_cat + active_ord,
+            numeric_cols=active_num,
+        )
 
         transformers = []
         if active_cat:
@@ -100,26 +82,34 @@ class OneHotPreprocessor(BasePreprocessor):
                     categories_list.append([str(c) for c in self.ordinal_categories[col]])
                 else:
                     categories_list.append(sorted(list(df_filled[col].unique())))
-            transformers.append((
-                "ord",
-                OrdinalEncoder(
-                    categories=categories_list,
-                    handle_unknown="use_encoded_value",
-                    unknown_value=-1,
-                    dtype=np.float32,
-                ),
-                active_ord,
-            ))
+
+            ord_encoder = OrdinalEncoder(
+                categories=categories_list,
+                handle_unknown="use_encoded_value",
+                unknown_value=-1,
+                dtype=np.float32,
+            )
+            if self.scale_ordinal_features:
+                ord_pipe = SkPipeline([
+                    ("encode", ord_encoder),
+                    ("impute", SimpleImputer(strategy="constant", fill_value=-1)),
+                    ("scale", StandardScaler()),
+                ])
+                transformers.append(("ord", ord_pipe, active_ord))
+            else:
+                transformers.append(("ord", ord_encoder, active_ord))
 
         if active_num:
-            transformers.append((
-                "num",
-                "passthrough",
-                active_num,
-            ))
+            if self.scale_numeric:
+                num_pipe = SkPipeline([
+                    ("imputer", SimpleImputer(strategy="median")),
+                    ("scaler", StandardScaler()),
+                ])
+                transformers.append(("num", num_pipe, active_num))
+            else:
+                transformers.append(("num", "passthrough", active_num))
 
         if not transformers:
-            # Если нет колонок, создаем фиктивный passthrough
             transformers.append(("empty", "passthrough", []))
 
         self.transformer_ = ColumnTransformer(
@@ -148,7 +138,11 @@ class OneHotPreprocessor(BasePreprocessor):
                     df[col] = self.missing_value
 
         df = df[self.feature_names_in_]
-        df_filled = self._fill_missing(df)
+        df_filled = self._fill_missing(
+            df,
+            categorical_cols=self.active_cat_ + self.active_ord_,
+            numeric_cols=self.active_num_,
+        )
 
         trans = self.transformer_.transform(df_filled)
         return np.asarray(trans, dtype=np.float32)

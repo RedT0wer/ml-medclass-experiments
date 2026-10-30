@@ -2,9 +2,7 @@
 
 from src.preprocessors.base import BasePreprocessor
 from src.preprocessors.booster import BoosterPreprocessor
-from src.preprocessors.filtered import FilteredPreprocessor
 from src.preprocessors.onehot import OneHotPreprocessor
-from src.preprocessors.onehot_scaled import ScaledOneHotPreprocessor
 from src.preprocessors.registry import (
     PREPROCESSORS_REGISTRY,
     PreprocessorRegistration,
@@ -13,6 +11,7 @@ from src.preprocessors.registry import (
     get_default_preprocessor_for_model,
     get_preprocessor,
     get_preprocessor_class,
+    get_preprocessor_params,
     get_preprocessor_registration,
     list_preprocessors,
     load_model_preprocessors_config,
@@ -23,9 +22,7 @@ from src.preprocessors.registry import (
 __all__ = [
     "BasePreprocessor",
     "OneHotPreprocessor",
-    "ScaledOneHotPreprocessor",
     "BoosterPreprocessor",
-    "FilteredPreprocessor",
     "PREPROCESSORS_REGISTRY",
     "PreprocessorRegistration",
     "register_preprocessor",
@@ -33,6 +30,7 @@ __all__ = [
     "get_preprocessor_registration",
     "get_preprocessor_class",
     "get_default_params",
+    "get_preprocessor_params",
     "get_preprocessor",
     "get_default_preprocessor_for_model",
     "load_preprocessors_config",
